@@ -1,0 +1,79 @@
+{
+  "best_model": "Logistic Regression",
+  "feature_importance_shap": {
+    "age": 2.0329212662435783,
+    "avg_glucose_level": 0.4950524541896396,
+    "bmi": 0.28370882099568406,
+    "heart_disease": 0.27549804830389046,
+    "hypertension": 0.18206395843577347,
+    "gender": 0.17370869388545004,
+    "ever_married": 0.16844049990532414,
+    "smoking_status": 0.10381560383563433,
+    "work_type": 0.057932976730442384,
+    "Residence_type": 0.016496295287602863
+  },
+  "model_comparison": {
+    "Logistic Regression": {
+      "recall": 0.82,
+      "precision": 0.1627,
+      "f1": 0.2715,
+      "auc": 0.8973,
+      "brier": 0.1456
+    },
+    "Random Forest": {
+      "recall": 0.42,
+      "precision": 0.3134,
+      "f1": 0.359,
+      "auc": 0.865,
+      "brier": 0.0578
+    },
+    "XGBoost": {
+      "recall": 0.58,
+      "precision": 0.1676,
+      "f1": 0.2601,
+      "auc": 0.8465,
+      "brier": 0.1157
+    },
+    "Gradient Boosting": {
+      "recall": 0.44,
+      "precision": 0.2785,
+      "f1": 0.3411,
+      "auc": 0.8458,
+      "brier": 0.0601
+    },
+    "KNN": {
+      "recall": 0.56,
+      "precision": 0.1806,
+      "f1": 0.2732,
+      "auc": 0.7527,
+      "brier": 0.1092
+    },
+    "SVM": {
+      "recall": 0.62,
+      "precision": 0.1574,
+      "f1": 0.251,
+      "auc": 0.8362,
+      "brier": 0.0938
+    }
+  },
+  "dataset_info": {
+    "total_samples": 5110,
+    "stroke_positive": 249,
+    "stroke_negative": 4861,
+    "imbalance_ratio": 19.5,
+    "features": [
+      "gender",
+      "age",
+      "hypertension",
+      "heart_disease",
+      "ever_married",
+      "work_type",
+      "Residence_type",
+      "avg_glucose_level",
+      "bmi",
+      "smoking_status"
+    ],
+    "missing_bmi_imputed": 201
+  },
+  "clinical_note": "This model is optimized for HIGH RECALL (sensitivity) to minimize missed stroke cases. A lower classification threshold (0.3) is recommended for clinical screening to catch more at-risk patients, accepting some false positives as a worthwhile tradeoff."
+}
