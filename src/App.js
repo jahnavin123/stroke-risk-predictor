@@ -379,8 +379,8 @@ export default function App() {
             <div style={s.h2}>Author</div>
             <p style={{ fontSize: 14, color: "#666", lineHeight: 1.7 }}>
               {/* Replace with your child's name and details */}
-              [Your Name] — High school researcher with a focus on neuroscience and computational biology.
-              This project was developed as part of independent research in applying machine learning
+              Jahnavi Nimmakayala — Emerald High school researcher with a focus on neuroscience and computational biology.
+              This project was developed as part of research in applying machine learning
               to clinical neuroscience problems.
             </p>
             <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
