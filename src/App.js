@@ -379,9 +379,9 @@ export default function App() {
             <div style={s.h2}>Author</div>
             <p style={{ fontSize: 14, color: "#666", lineHeight: 1.7 }}>
               {/* Replace with your child's name and details */}
-              Jahnavi Nimmakayala — Emerald High school researcher with a focus on neuroscience and computational biology.
+              Jahnavi Nimmakayala — High school researcher with a focus on neuroscience and computational biology.
               This project was developed as part of research in applying machine learning
-              to clinical neuroscience problems.
+              to clinical neuroscience problems. Team members include Siridyuthi Krovvidi, Akshar Suresh, Anushka Deo, Aarav, and Tisya. 
             </p>
             <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
               <a href="https://github.com/YOUR_USERNAME/stroke-risk-predictor" target="_blank" rel="noreferrer"
