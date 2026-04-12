@@ -384,7 +384,7 @@ export default function App() {
               to clinical neuroscience problems. Team members include Siridyuthi Krovvidi, Akshar Suresh, Anushka Deo, Aarav, and Tisya. 
             </p>
             <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-              <a href="https://github.com/YOUR_USERNAME/stroke-risk-predictor" target="_blank" rel="noreferrer"
+              <a href="https://github.com/jahnavin123/stroke-risk-predictor" target="_blank" rel="noreferrer"
                 style={{ padding: "6px 14px", background: "#2d2a4a", color: "#fff", borderRadius: 8, fontSize: 12, textDecoration: "none", fontWeight: 500 }}>
                 GitHub Repository
               </a>
