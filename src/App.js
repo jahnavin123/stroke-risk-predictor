@@ -15,13 +15,28 @@ const SELECTS = {
   ever_married: { label: "Ever married", opts: [["1", "Yes"], ["0", "No"]] },
 };
 
-const SHAP_WEIGHTS = {
+const SHAP_WEIGHTS = { 1. age                       | SHAP: 1.713 | 100.0% of top
+  2. hypertension              | SHAP: 0.153 | 8.9% of top
+  3. avg_glucose_level         | SHAP: 0.152 | 8.9% of top
+  4. Residence_type            | SHAP: 0.090 | 5.3% of top
+  5. ever_married              | SHAP: 0.033 | 1.9% of top
+  6. heart_disease             | SHAP: 0.024 | 1.4% of top
+  7. smoking_status            | SHAP: 0.022 | 1.3% of top
+  8. gender                    | SHAP: 0.008 | 0.5% of top
+  9. work_type                 | SHAP: 0.008 | 0.5% of top
+  10. bmi                       | SHAP: 0.006 | 0.4% of top
   age: 2.033, avg_glucose_level: 0.495, bmi: 0.284, heart_disease: 0.276,
   hypertension: 0.182, gender: 0.174, ever_married: 0.168, smoking_status: 0.104,
   work_type: 0.058, Residence_type: 0.016,
 };
 
-const MODELS = [
+const MODELS = [  Logistic Regression       | AUC: 0.838 | Recall: 0.800 | Prec: 0.139 | F1: 0.237 ← BEST
+  Random Forest             | AUC: 0.794 | Recall: 0.100 | Prec: 0.185 | F1: 0.130
+  Gradient Boosting         | AUC: 0.792 | Recall: 0.140 | Prec: 0.259 | F1: 0.182
+  XGBoost                   | AUC: 0.791 | Recall: 0.480 | Prec: 0.128 | F1: 0.202
+  SVM                       | AUC: 0.776 | Recall: 0.640 | Prec: 0.117 | F1: 0.198
+  KNN                       | AUC: 0.671 | Recall: 0.320 | Prec: 0.103 | F1: 0.156
+
   { name: "Logistic Regression", auc: 0.897, recall: 0.82, precision: 0.163, f1: 0.272, best: true },
   { name: "Random Forest", auc: 0.865, recall: 0.42, precision: 0.313, f1: 0.359 },
   { name: "XGBoost", auc: 0.847, recall: 0.58, precision: 0.168, f1: 0.26 },
