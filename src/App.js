@@ -47,31 +47,24 @@ const METHODOLOGY_STEPS = [
   { title: "Threshold optimization", desc: "Classification threshold lowered from 0.5 to 0.3 for clinical screening — catches more at-risk patients at the cost of some false positives, an appropriate tradeoff for a screening tool" },
 ];
 
-/* ─── SENTRA Pipeline constants (Additions 1-5) ─── */
-
-// Calibration data (Addition #4) — from bootstrap evaluation
+/* ─── Calibration data (Addition #4) ─── */
 const CALIBRATION_DATA = {
-  logistic: {
-    model: "Logistic Regression",
-    brier: 0.146,
-    ece: 0.067,
-    maxCE: 0.142,
-    bins: [
-      { predicted: 0.05, actual: 0.03, count: 2890 },
-      { predicted: 0.15, actual: 0.11, count: 842 },
-      { predicted: 0.25, actual: 0.19, count: 431 },
-      { predicted: 0.35, actual: 0.28, count: 287 },
-      { predicted: 0.45, actual: 0.39, count: 198 },
-      { predicted: 0.55, actual: 0.51, count: 156 },
-      { predicted: 0.65, actual: 0.58, count: 112 },
-      { predicted: 0.75, actual: 0.69, count: 89 },
-      { predicted: 0.85, actual: 0.78, count: 62 },
-      { predicted: 0.95, actual: 0.91, count: 43 },
-    ],
-  },
+  brier: 0.146, ece: 0.067, maxCE: 0.142,
+  bins: [
+    { predicted: 0.05, actual: 0.03, count: 2890 },
+    { predicted: 0.15, actual: 0.11, count: 842 },
+    { predicted: 0.25, actual: 0.19, count: 431 },
+    { predicted: 0.35, actual: 0.28, count: 287 },
+    { predicted: 0.45, actual: 0.39, count: 198 },
+    { predicted: 0.55, actual: 0.51, count: 156 },
+    { predicted: 0.65, actual: 0.58, count: 112 },
+    { predicted: 0.75, actual: 0.69, count: 89 },
+    { predicted: 0.85, actual: 0.78, count: 62 },
+    { predicted: 0.95, actual: 0.91, count: 43 },
+  ],
 };
 
-// Fairness subgroup data (Addition #5)
+/* ─── Fairness subgroup data (Addition #5) ─── */
 const FAIRNESS_DATA = {
   ageGroups: [
     { group: "Under 40", recall: 0.0, auc: 0.72, n: 2241, flag: true },
@@ -86,7 +79,8 @@ const FAIRNESS_DATA = {
   ],
 };
 
-/* ─── helpers ─── */
+/* ─── SENTRA agent functions ─── */
+
 function computeRisk(sliders, selects) {
   const c = {
     age: ((sliders.age - 40) / 42) * 1.713,
@@ -103,61 +97,73 @@ function computeRisk(sliders, selects) {
   return { prob: 1 / (1 + Math.exp(-logit)), contributions: c };
 }
 
-/* Recommendation ToT (Addition #1) */
-function runRecommendationToT(riskPct, age, hasHypertension, hasHeartDisease) {
+/* Agent 1: Signal Monitor */
+function signalMonitor(pct) {
+  return { escalate: pct >= 10, reason: pct >= 10 ? "Risk score warrants full assessment" : "Low risk — Tier-1 stop" };
+}
+
+/* Agent 2: Risk Assessor — already done by computeRisk + SHAP */
+
+/* Agent 3: Fairness Agent (Addition #5) */
+function fairnessAgent(age, gender) {
+  const warnings = [];
+  const flags = [];
+  if (age < 55) {
+    warnings.push({ severity: "high", text: `Patient age ${age} is in the under-55 subgroup where the model has 0% recall. ML prediction is unreliable — clinical judgment must take priority.` });
+    flags.push("age_blind_spot");
+  }
+  if (age < 55 && gender === "0") {
+    warnings.push({ severity: "high", text: "Young female patients have the highest miss rate. Consider expanded screening even with low ML risk score." });
+    flags.push("young_female_atypical");
+  }
+  return { warnings, flags, subgroup: age < 55 ? "under_55" : "55_plus" };
+}
+
+/* Agent 4: Protocol Advisor — Recommendation ToT (Addition #1) */
+function recommendationToT(riskPct, age, hasHypertension, hasHeartDisease) {
   const branches = [];
+
   // Branch 1: Routine follow-up
   if (riskPct < 15 && age < 55) {
-    branches.push({ action: "routine_followup", label: "Routine follow-up", score: "likely", rationale: "Low risk score, younger patient", pruned: false });
+    branches.push({ action: "routine_followup", label: "Routine follow-up", score: "likely", rationale: "Low risk score, younger patient — standard screening interval", pruned: false });
   } else if (riskPct >= 40) {
-    branches.push({ action: "routine_followup", label: "Routine follow-up", score: "impossible", rationale: `Risk ${riskPct}% too high for routine — unsafe`, pruned: true });
+    branches.push({ action: "routine_followup", label: "Routine follow-up", score: "impossible", rationale: `Risk ${riskPct}% too high — routine follow-up unsafe`, pruned: true });
   } else {
     branches.push({ action: "routine_followup", label: "Routine follow-up", score: "possible", rationale: "No hard contraindication but risk factors present", pruned: false });
   }
+
   // Branch 2: Clinician review
   if (riskPct >= 20 && riskPct < 50) {
     branches.push({ action: "clinician_review", label: "Clinician review (expedited)", score: "likely", rationale: `Moderate risk ${riskPct}% warrants same-day evaluation`, pruned: false });
   } else {
     branches.push({ action: "clinician_review", label: "Clinician review (expedited)", score: "possible", rationale: "Could be appropriate but no strong signal", pruned: false });
   }
+
   // Branch 3: Urgent evaluation
   if (riskPct >= 50) {
-    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation (stroke alert)", score: "sure", rationale: `Risk ${riskPct}% — high risk requires immediate workup`, pruned: false });
+    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation — stroke alert", score: "sure", rationale: `Risk ${riskPct}% — high risk requires immediate workup`, pruned: false });
   } else if (hasHypertension && hasHeartDisease && age >= 65) {
-    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation (stroke alert)", score: "likely", rationale: "Multiple comorbidities in elderly patient", pruned: false });
+    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation — stroke alert", score: "likely", rationale: "Multiple comorbidities in elderly patient", pruned: false });
   } else {
-    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation (stroke alert)", score: riskPct < 15 ? "impossible" : "possible", rationale: riskPct < 15 ? "No acute signals" : "Not excluded but not strongly indicated", pruned: riskPct < 15 });
+    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation — stroke alert", score: riskPct < 15 ? "impossible" : "possible", rationale: riskPct < 15 ? "No acute signals" : "Not excluded but not strongly indicated", pruned: riskPct < 15 });
   }
 
   const scoreOrder = { sure: 3, likely: 2, possible: 1, impossible: 0 };
   const survivors = branches.filter(b => !b.pruned).sort((a, b) => scoreOrder[b.score] - scoreOrder[a.score]);
-  const selected = survivors[0] || null;
-  return { branches, selected };
+  return { branches, selected: survivors[0] || null };
 }
 
-/* Fairness check (Addition #5) */
-function runFairnessCheck(age, gender) {
-  const warnings = [];
-  const flags = [];
-  if (age < 55) {
-    warnings.push(`Patient age ${age} falls in the under-55 subgroup where the ML model has 0% recall. Clinical judgment should take priority.`);
-    flags.push("age_blind_spot");
-  }
-  if (age < 55 && gender === "0") {
-    warnings.push("Young female patients have the highest miss rate. Consider expanded screening even with low ML risk score.");
-    flags.push("young_female_atypical");
-  }
-  return { warnings, flags, subgroup: age < 55 ? "under_55" : "55_plus" };
-}
-
-/* Safety audit (Addition #5) */
-function runSafetyAudit(riskPct, fairness, recommendation) {
+/* Agent 5: Safety Auditor (Addition #5) */
+function safetyAuditor(riskPct, fairness, recommendation) {
   const violations = [];
   if (fairness.flags.includes("age_blind_spot")) {
-    violations.push({ severity: "warn", rule: "age_blind_spot", detail: "ML model has 0% recall for this subgroup. Clinical judgment must take priority." });
+    violations.push({ severity: "warn", rule: "AGE_BLIND_SPOT", detail: "ML model has 0% recall for this subgroup — clinical judgment must override." });
   }
   if (riskPct > 70 && recommendation === "routine_followup") {
-    violations.push({ severity: "block", rule: "misroute", detail: "High-risk patient routed to routine follow-up — BLOCKED." });
+    violations.push({ severity: "block", rule: "MISROUTE", detail: "High-risk patient routed to routine follow-up — BLOCKED." });
+  }
+  if (riskPct > 50 && recommendation === "routine_followup") {
+    violations.push({ severity: "block", rule: "UNDERTRIAGE", detail: "Elevated risk patient cannot be sent to routine — requires expedited or urgent." });
   }
   const blocked = violations.filter(v => v.severity === "block");
   return { passed: blocked.length === 0, gate: blocked.length > 0 ? "BLOCKED" : "PASS", violations };
@@ -176,7 +182,7 @@ const s = {
     borderRadius: 8, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s",
     background: active ? "#534AB7" : "transparent", color: active ? "#fff" : "#888",
   }),
-  note: (bg, accent) => ({ background: bg, borderLeft: "3px solid " + accent, borderRadius: "0 10px 10px 0", padding: "14px 18px", fontSize: 12, lineHeight: 1.7, color: "#555" }),
+  note: (bg, accent) => ({ background: bg, borderLeft: "3px solid " + accent, borderRadius: "0 10px 10px 0", padding: "14px 18px", fontSize: 12, lineHeight: 1.7, color: "#555", marginBottom: 12 }),
 };
 
 function HBar({ value, max, color }) {
@@ -194,80 +200,49 @@ function Metric({ label, value, sub }) {
   );
 }
 
-/* Structured execution log entry (Addition #2) */
-function LogEntry({ agent, action, output, decision, next, provenance, color }) {
-  return (
-    <div style={{ padding: "12px 16px", background: "#faf9ff", borderRadius: 10, borderLeft: `3px solid ${color}`, marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color }}>{agent}</span>
-        <span style={{ fontSize: 10, color: "#bbb", fontFamily: "monospace" }}>
-          {new Date().toISOString().split("T")[1].split(".")[0]}Z
-        </span>
-      </div>
-      <div style={{ fontSize: 12, lineHeight: 1.8, color: "#555" }}>
-        <div><span style={{ color: "#888", fontWeight: 500 }}>Action:</span> {action}</div>
-        <div><span style={{ color: "#888", fontWeight: 500 }}>Output:</span> {output}</div>
-        <div><span style={{ color: "#888", fontWeight: 500 }}>Decision:</span> <span style={{ fontWeight: 500 }}>{decision}</span></div>
-        <div><span style={{ color: "#888", fontWeight: 500 }}>Next:</span> {next}</div>
-        {provenance && <div><span style={{ color: "#888", fontWeight: 500 }}>Source:</span> <span style={{ fontFamily: "monospace", fontSize: 11 }}>{provenance}</span></div>}
-      </div>
-    </div>
-  );
-}
-
-/* Reliability diagram bar (Addition #4) */
-function CalibrationBar({ predicted, actual, count, maxCount }) {
-  const gap = Math.abs(actual - predicted);
-  const gapColor = gap < 0.05 ? "#1D9E75" : gap < 0.10 ? "#D4A017" : "#D94040";
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, fontSize: 12 }}>
-      <span style={{ width: 40, textAlign: "right", color: "#888" }}>{predicted.toFixed(2)}</span>
-      <div style={{ flex: 1, position: "relative", height: 20 }}>
-        <div style={{ position: "absolute", width: `${(predicted) * 100}%`, height: "100%", background: "#e0def5", borderRadius: 3, opacity: 0.5 }} />
-        <div style={{ position: "absolute", width: `${(actual) * 100}%`, height: "100%", background: "#534AB7", borderRadius: 3, opacity: 0.8 }} />
-      </div>
-      <span style={{ width: 40, textAlign: "right", color: "#666" }}>{actual.toFixed(2)}</span>
-      <span style={{ width: 30, textAlign: "right", color: gapColor, fontWeight: 500, fontSize: 11 }}>{gap.toFixed(2)}</span>
-      <span style={{ width: 35, textAlign: "right", color: "#bbb", fontSize: 11 }}>n={count}</span>
-    </div>
-  );
-}
-
 /* ─── main app ─── */
 export default function App() {
   const [tab, setTab] = useState(0);
   const [sliders, setSliders] = useState({ age: 55, avg_glucose_level: 110, bmi: 28 });
   const [selects, setSelects] = useState({ hypertension: "0", heart_disease: "0", gender: "0", smoking_status: "2", ever_married: "1" });
   const [expandedFactor, setExpandedFactor] = useState(null);
+  const [showTrace, setShowTrace] = useState(false);
 
+  /* ─── Run SENTRA pipeline on every input change ─── */
   const { prob, contributions } = useMemo(() => computeRisk(sliders, selects), [sliders, selects]);
   const pct = Math.round(prob * 100);
   const riskLevel = pct < 20 ? "Low" : pct < 50 ? "Moderate" : "High";
   const riskColor = pct < 20 ? "#1D9E75" : pct < 50 ? "#D4A017" : "#D94040";
 
-  /* SENTRA Pipeline computations (Additions 1-5) */
-  const recToT = useMemo(() => runRecommendationToT(pct, sliders.age, selects.hypertension === "1", selects.heart_disease === "1"), [pct, sliders.age, selects.hypertension, selects.heart_disease]);
-  const fairness = useMemo(() => runFairnessCheck(sliders.age, selects.gender), [sliders.age, selects.gender]);
-  const safetyAudit = useMemo(() => runSafetyAudit(pct, fairness, recToT.selected?.action), [pct, fairness, recToT.selected]);
+  // Agent 1: Signal Monitor
+  const signal = useMemo(() => signalMonitor(pct), [pct]);
+  // Agent 3: Fairness Agent
+  const fairness = useMemo(() => fairnessAgent(sliders.age, selects.gender), [sliders.age, selects.gender]);
+  // Agent 4: Recommendation ToT
+  const recToT = useMemo(() => recommendationToT(pct, sliders.age, selects.hypertension === "1", selects.heart_disease === "1"), [pct, sliders.age, selects.hypertension, selects.heart_disease]);
+  // Agent 5: Safety Auditor
+  const safety = useMemo(() => safetyAuditor(pct, fairness, recToT.selected?.action), [pct, fairness, recToT.selected]);
 
   const sortedC = Object.entries(contributions).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
   const maxC = Math.max(...sortedC.map(([, v]) => Math.abs(v)), 0.01);
-
   const globalSorted = Object.entries(SHAP_WEIGHTS).sort((a, b) => b[1] - a[1]);
   const maxG = globalSorted[0][1];
 
-  const tabs = ["Risk assessment", "SENTRA pipeline", "Models", "Risk factors", "Methodology", "About"];
+  const tabs = ["Risk assessment", "Models", "Risk factors", "Methodology", "About"];
+
+  const recColor = recToT.selected?.action === "urgent_evaluation" ? "#D94040"
+    : recToT.selected?.action === "clinician_review" ? "#D4A017" : "#1D9E75";
 
   return (
     <div style={s.page}>
       {/* header */}
       <div style={{ textAlign: "center", padding: "36px 0 24px" }}>
         <div style={{ display: "inline-block", background: "#f0eeff", padding: "4px 14px", borderRadius: 20, fontSize: 11, fontWeight: 600, letterSpacing: 1, color: "#534AB7", marginBottom: 10 }}>
-          MACHINE LEARNING + EXPLAINABLE AI + AGENTIC AI
+          SENTRA — STROKE EARLY-WARNING & NEURO TRIAGE RESPONSE AGENT
         </div>
         <h1 style={{ fontSize: 28, fontWeight: 700, margin: "8px 0 6px" }}>Stroke risk predictor</h1>
         <p style={{ fontSize: 14, color: "#999", maxWidth: 540, margin: "0 auto" }}>
-          Clinical screening tool with SHAP interpretability, multi-agent triage (SENTRA), fairness auditing, and safety guardrails
+          Multi-agent clinical decision support with ML prediction, SHAP explainability, fairness auditing, and safety guardrails
         </p>
       </div>
 
@@ -278,9 +253,10 @@ export default function App() {
         ))}
       </nav>
 
-      {/* ─── TAB 0: Risk Assessment ─── */}
+      {/* ─── TAB 0: Risk Assessment (full SENTRA pipeline) ─── */}
       {tab === 0 && (
         <>
+          {/* Patient input */}
           <div style={s.card}>
             <div style={s.h2}>Patient information</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -307,8 +283,9 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ ...s.card, textAlign: "center", background: "linear-gradient(135deg, " + riskColor + "06, " + riskColor + "03)", borderColor: riskColor + "33" }}>
-            <div style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: 1 }}>Estimated stroke risk</div>
+          {/* Risk score */}
+          <div style={{ ...s.card, textAlign: "center", background: `linear-gradient(135deg, ${riskColor}06, ${riskColor}03)`, borderColor: riskColor + "33" }}>
+            <div style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: 1 }}>ML risk prediction</div>
             <div style={{ fontSize: 52, fontWeight: 700, color: riskColor, margin: "6px 0" }}>{pct}%</div>
             <span style={{ display: "inline-block", padding: "4px 16px", borderRadius: 20, background: riskColor + "15", color: riskColor, fontSize: 13, fontWeight: 600 }}>{riskLevel} risk</span>
             <div style={{ height: 8, borderRadius: 4, background: "#eee", margin: "18px 0 0", overflow: "hidden" }}>
@@ -316,17 +293,89 @@ export default function App() {
             </div>
           </div>
 
-          {/* Fairness warnings inline (Addition #5) */}
-          {fairness.warnings.length > 0 && (
-            <div style={s.note("#fff8f0", "#D4A017")}>
-              <strong>Fairness alert:</strong>{" "}
-              {fairness.warnings.map((w, i) => <span key={i}>{w}{i < fairness.warnings.length - 1 ? " " : ""}</span>)}
+          {/* ═══ Fairness Agent warnings (Addition #5) ═══ */}
+          {fairness.warnings.length > 0 && fairness.warnings.map((w, i) => (
+            <div key={i} style={s.note("#fff8f0", "#D4A017")}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ padding: "2px 8px", borderRadius: 6, background: "#D4A01720", color: "#D4A017", fontSize: 10, fontWeight: 700 }}>FAIRNESS AGENT</span>
+              </div>
+              {w.text}
             </div>
-          )}
-          {fairness.warnings.length > 0 && <div style={{ height: 8 }} />}
+          ))}
 
+          {/* ═══ Safety Auditor gate (Addition #5) ═══ */}
+          <div style={{
+            ...s.card,
+            borderColor: safety.passed ? "#1D9E7540" : "#D9404040",
+            background: safety.passed ? "#f0fff505" : "#fff0f008",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: safety.violations.length > 0 ? 12 : 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 0.5 }}>Safety Auditor</span>
+              </div>
+              <span style={{
+                padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                background: safety.passed ? "#1D9E75" : "#D94040", color: "#fff",
+              }}>
+                {safety.gate}
+              </span>
+            </div>
+            {safety.violations.map((v, i) => (
+              <div key={i} style={{
+                padding: "10px 14px", borderRadius: 8, marginBottom: 6,
+                background: v.severity === "block" ? "#D9404010" : "#D4A01710",
+                borderLeft: `3px solid ${v.severity === "block" ? "#D94040" : "#D4A017"}`,
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: v.severity === "block" ? "#D94040" : "#D4A017" }}>{v.rule}:</span>{" "}
+                <span style={{ fontSize: 12, color: "#555" }}>{v.detail}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ═══ Recommendation ToT output (Addition #1) ═══ */}
+          <div style={{ ...s.card, borderColor: recColor + "40" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>SENTRA Recommendation</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: recColor }}>{recToT.selected?.label || "Escalate to clinician"}</div>
+              </div>
+              <div style={{ padding: "6px 14px", borderRadius: 10, background: recColor + "12", color: recColor, fontSize: 12, fontWeight: 600 }}>
+                [{recToT.selected?.score || "escalate"}]
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: "#666", marginBottom: 14, lineHeight: 1.6 }}>
+              {recToT.selected?.rationale}
+            </div>
+
+            {/* ToT branches */}
+            <div style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Tree-of-Thought branches</div>
+            {recToT.branches.map((b, i) => (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                background: b.pruned ? "#fafafa" : (recToT.selected?.action === b.action ? recColor + "08" : "#fff"),
+                borderRadius: 8, border: `1px solid ${b.pruned ? "#eee" : (recToT.selected?.action === b.action ? recColor + "40" : "#f0f0f0")}`,
+                marginBottom: 6, opacity: b.pruned ? 0.45 : 1,
+              }}>
+                <span style={{
+                  width: 55, textAlign: "center", fontSize: 10, fontWeight: 600, flexShrink: 0,
+                  color: b.pruned ? "#D94040" : b.score === "sure" ? "#1D9E75" : b.score === "likely" ? "#534AB7" : "#D4A017"
+                }}>
+                  {b.pruned ? "PRUNED" : `[${b.score}]`}
+                </span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 12, fontWeight: recToT.selected?.action === b.action ? 600 : 400 }}>
+                    {b.label}
+                    {recToT.selected?.action === b.action && <span style={{ fontSize: 9, background: recColor, color: "#fff", padding: "2px 6px", borderRadius: 8, marginLeft: 6 }}>SELECTED</span>}
+                  </span>
+                  <div style={{ fontSize: 11, color: "#999", marginTop: 1 }}>{b.rationale}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ═══ SHAP contributions with provenance (Additions #2 & #3) ═══ */}
           <div style={s.card}>
-            <div style={s.h2}>Individual SHAP contributions</div>
+            <div style={s.h2}>SHAP contributions</div>
             <p style={{ ...s.muted, marginBottom: 12 }}>How each feature pushes this patient's prediction toward or away from stroke</p>
             {sortedC.map(([k, v]) => (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7, fontSize: 13 }}>
@@ -338,197 +387,73 @@ export default function App() {
               </div>
             ))}
             <div style={{ ...s.muted, marginTop: 10 }}>
-              Red = increases risk · Green = decreases risk ·{" "}
-              <span style={{ fontWeight: 500 }}>Provenance: SHAP LinearExplainer on Logistic Regression model</span>
+              Red = increases risk · Green = decreases risk
             </div>
           </div>
 
-          <div style={s.note("#f0f4ff", "#534AB7")}>
-            <strong>Clinical note:</strong> This model is optimized for high sensitivity (recall = 80%) to minimize missed stroke cases. It is designed as a screening tool — flagged patients should receive further clinical evaluation. Not a diagnostic instrument.
-          </div>
-        </>
-      )}
-
-      {/* ─── TAB 1: SENTRA Pipeline (NEW — Additions 1-5) ─── */}
-      {tab === 1 && (
-        <>
-          {/* Architecture diagram */}
-          <div style={s.card}>
-            <div style={s.h2}>SENTRA multi-agent architecture</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>Stroke Early-warning and Neuro Triage Response Agent — 6 specialized agents coordinated via LangGraph</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", padding: "16px 0" }}>
-              {[
-                { name: "Signal Monitor", color: "#1D9E75", desc: "Data validation" },
-                { name: "Risk Assessor", color: "#534AB7", desc: "ML + SHAP + differential" },
-                { name: "Fairness Agent", color: "#D4A017", desc: "Demographic blind spots" },
-                { name: "Protocol Advisor", color: "#534AB7", desc: "RAG + Rec. ToT" },
-                { name: "Safety Auditor", color: "#D94040", desc: "Final safety gate" },
-                { name: "Escalation Coord.", color: "#888", desc: "Route to clinician" },
-              ].map((agent, i, arr) => (
-                <React.Fragment key={agent.name}>
-                  <div style={{ padding: "10px 14px", background: agent.color + "10", border: `1px solid ${agent.color}40`, borderRadius: 10, textAlign: "center", minWidth: 100 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: agent.color }}>{agent.name}</div>
-                    <div style={{ fontSize: 10, color: "#888", marginTop: 2 }}>{agent.desc}</div>
-                  </div>
-                  {i < arr.length - 1 && <div style={{ display: "flex", alignItems: "center", color: "#ccc", fontSize: 18 }}>&#8594;</div>}
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
-
-          {/* Structured execution log (Addition #2) */}
-          <div style={s.card}>
-            <div style={s.h2}>Structured execution trace</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>Action &#8594; Output &#8594; Decision &#8594; Next (replaces conversational logging)</p>
-
-            <LogEntry
-              agent="SignalMonitor" color="#1D9E75"
-              action="screen_vitals_symptoms"
-              output={`risk=${pct}%, age=${sliders.age}, hypertension=${selects.hypertension === "1" ? "yes" : "no"}`}
-              decision={pct >= 10 ? "escalate=true" : "escalate=false (Tier-1 stop)"}
-              next={pct >= 10 ? "RiskAssessor" : "END"}
-            />
-            {pct >= 10 && (
-              <>
-                <LogEntry
-                  agent="RiskAssessor" color="#534AB7"
-                  action="compute_scores_and_shap"
-                  output={`SHAP: age=${contributions.age?.toFixed(3)}, glucose=${contributions.avg_glucose_level?.toFixed(3)}`}
-                  decision={`risk_level=${riskLevel}`}
-                  next="FairnessAgent + ProtocolAdvisor"
-                  provenance="deterministic_tool:SHAP.LinearExplainer"
-                />
-                <LogEntry
-                  agent="FairnessAgent" color="#D4A017"
-                  action="check_demographic_blind_spots"
-                  output={`warnings=${fairness.warnings.length}, flags=[${fairness.flags.join(", ")}]`}
-                  decision={fairness.warnings.length > 0 ? "WARNINGS RAISED" : "fairness_checked"}
-                  next="ProtocolAdvisor"
-                  provenance="fairness_agent:subgroup_analysis"
-                />
-                <LogEntry
-                  agent="ProtocolAdvisor" color="#534AB7"
-                  action="recommendation_tot + pathway_selection"
-                  output={`ToT selected: ${recToT.selected?.label || "ABSTAIN"}`}
-                  decision={`recommendation=${recToT.selected?.action || "escalate_to_clinician"}`}
-                  next="SafetyAuditor"
-                  provenance="guideline:AHA/ASA Stroke Guidelines 2024"
-                />
-                <LogEntry
-                  agent="SafetyAuditor" color="#D94040"
-                  action="validate_recommendation"
-                  output={`gate=${safetyAudit.gate}, violations=${safetyAudit.violations.length}`}
-                  decision={safetyAudit.gate}
-                  next="EscalationCoordinator"
-                />
-                <LogEntry
-                  agent="EscalationCoordinator" color="#888"
-                  action="route_to_clinician"
-                  output={`urgency=${riskLevel.toLowerCase()}`}
-                  decision="status=PENDING — requires clinician sign-off"
-                  next="END"
-                />
-              </>
-            )}
-          </div>
-
-          {/* Recommendation ToT (Addition #1) */}
-          <div style={s.card}>
-            <div style={s.h2}>Recommendation Tree-of-Thought</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>ToT decides the <em>action</em> (what to do), not the prediction. Branch &#8594; Evaluate &#8594; Prune &#8594; Select.</p>
-            {recToT.branches.map((b, i) => (
-              <div key={i} style={{
-                display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
-                background: b.pruned ? "#fafafa" : (recToT.selected?.action === b.action ? "#f0eeff" : "#fff"),
-                borderRadius: 10, border: `1px solid ${b.pruned ? "#eee" : (recToT.selected?.action === b.action ? "#534AB7" : "#eae8f0")}`,
-                marginBottom: 8, opacity: b.pruned ? 0.5 : 1,
-              }}>
-                <div style={{ width: 60, textAlign: "center" }}>
-                  {b.pruned ? (
-                    <span style={{ fontSize: 11, color: "#D94040", fontWeight: 500 }}>PRUNED</span>
-                  ) : (
-                    <span style={{
-                      fontSize: 11, fontWeight: 500,
-                      color: b.score === "sure" ? "#1D9E75" : b.score === "likely" ? "#534AB7" : "#D4A017"
-                    }}>[{b.score}]</span>
-                  )}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: recToT.selected?.action === b.action ? 600 : 400, color: "#2d2a4a" }}>
-                    {b.label}
-                    {recToT.selected?.action === b.action && (
-                      <span style={{ fontSize: 10, background: "#534AB7", color: "#fff", padding: "2px 8px", borderRadius: 10, marginLeft: 8 }}>SELECTED</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>{b.rationale}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Safety audit result (Addition #5) */}
-          <div style={{
-            ...s.card,
-            borderColor: safetyAudit.passed ? "#1D9E7540" : "#D9404040",
-            background: safetyAudit.passed ? "#f0fff5" : "#fff0f0",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={s.h2}>Safety auditor gate</div>
-              <span style={{
-                padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                background: safetyAudit.passed ? "#1D9E75" : "#D94040", color: "#fff",
-              }}>
-                {safetyAudit.gate}
-              </span>
-            </div>
-            {safetyAudit.violations.length === 0 ? (
-              <p style={{ fontSize: 13, color: "#1D9E75" }}>No violations detected. Recommendation cleared for clinician review.</p>
-            ) : (
-              safetyAudit.violations.map((v, i) => (
-                <div key={i} style={{
-                  padding: "10px 14px", borderRadius: 8, marginBottom: 6,
-                  background: v.severity === "block" ? "#D9404015" : "#D4A01715",
-                  borderLeft: `3px solid ${v.severity === "block" ? "#D94040" : "#D4A017"}`,
-                }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: v.severity === "block" ? "#D94040" : "#D4A017", textTransform: "uppercase" }}>
-                    {v.severity} — {v.rule}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>{v.detail}</div>
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Provenance trail (Addition #3) */}
+          {/* ═══ Provenance trail (Addition #3) ═══ */}
           <div style={s.card}>
             <div style={s.h2}>Provenance trail</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>Every claim traced to its source: SHAP value + guideline + tool</p>
+            <p style={{ ...s.muted, marginBottom: 12 }}>Every claim traced to its source — SHAP value + guideline + agent</p>
             {[
-              { claim: `Risk score: ${pct}%`, source: "SHAP LinearExplainer on LogisticRegression", type: "computed_score", shap: `age=${contributions.age?.toFixed(3)}, glucose=${contributions.avg_glucose_level?.toFixed(3)}` },
-              { claim: `Age SHAP contribution: ${contributions.age?.toFixed(3)}`, source: "deterministic_tool:SHAP.LinearExplainer", type: "shap_value", shap: "Dominant feature (mean |SHAP| = 1.713)" },
-              { claim: `Recommendation: ${recToT.selected?.label || "Escalate"}`, source: "recommendation_tot:Tree-of-Thought", type: "tot_decision" },
-              { claim: `Fairness subgroup: ${fairness.subgroup}`, source: "fairness_agent:subgroup_analysis", type: "fairness_check" },
-              { claim: "Treatment protocol reference", source: "guideline:AHA/ASA Guidelines for Early Management of Acute Ischemic Stroke (2019)", type: "protocol_citation" },
+              { claim: `Risk score: ${pct}%`, source: "SHAP LinearExplainer → LogisticRegression", type: "ml_score" },
+              { claim: `Top factor: age (SHAP = ${contributions.age?.toFixed(3)})`, source: "deterministic: SHAP.LinearExplainer", type: "shap" },
+              { claim: `Fairness: ${fairness.subgroup} subgroup`, source: "FairnessAgent: subgroup recall analysis", type: "fairness" },
+              { claim: `Recommendation: ${recToT.selected?.label || "Escalate"}`, source: "ProtocolAdvisor: Tree-of-Thought search", type: "tot" },
+              { claim: `Safety gate: ${safety.gate}`, source: "SafetyAuditor: rule-based validation", type: "safety" },
+              { claim: "Clinical protocol reference", source: "AHA/ASA Guidelines for Early Management of Acute Ischemic Stroke (2019)", type: "guideline" },
             ].map((p, i) => (
-              <div key={i} style={{ display: "flex", gap: 10, marginBottom: 8, fontSize: 12, padding: "8px 12px", background: "#faf9ff", borderRadius: 8 }}>
-                <span style={{ padding: "2px 8px", borderRadius: 6, background: "#f0eeff", color: "#534AB7", fontSize: 10, fontWeight: 600, flexShrink: 0, height: "fit-content" }}>{p.type}</span>
+              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 12, padding: "6px 10px", background: "#faf9ff", borderRadius: 8 }}>
+                <span style={{ padding: "2px 7px", borderRadius: 5, background: "#f0eeff", color: "#534AB7", fontSize: 10, fontWeight: 600, flexShrink: 0, height: "fit-content" }}>{p.type}</span>
                 <div style={{ flex: 1 }}>
                   <div style={{ color: "#2d2a4a", fontWeight: 500 }}>{p.claim}</div>
-                  <div style={{ color: "#888", fontFamily: "monospace", fontSize: 11, marginTop: 2 }}>{p.source}</div>
-                  {p.shap && <div style={{ color: "#534AB7", fontSize: 11, marginTop: 2 }}>{p.shap}</div>}
+                  <div style={{ color: "#999", fontFamily: "monospace", fontSize: 11 }}>{p.source}</div>
                 </div>
               </div>
             ))}
           </div>
 
+          {/* ═══ Structured execution trace (Addition #2) — collapsible ═══ */}
+          <div style={s.card}>
+            <button onClick={() => setShowTrace(!showTrace)} style={{
+              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+              display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: 0,
+            }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#2d2a4a" }}>Execution trace</span>
+              <span style={{ color: "#534AB7", fontSize: 18, fontWeight: 300 }}>{showTrace ? "−" : "+"}</span>
+            </button>
+            {showTrace && (
+              <div style={{ marginTop: 14 }}>
+                {[
+                  { agent: "SignalMonitor", color: "#1D9E75", action: "screen_vitals", output: `risk=${pct}%`, decision: signal.escalate ? "escalate=true" : "STOP (Tier-1)", next: signal.escalate ? "RiskAssessor" : "END" },
+                  ...(signal.escalate ? [
+                    { agent: "RiskAssessor", color: "#534AB7", action: "compute_shap", output: `age=${contributions.age?.toFixed(3)}, gluc=${contributions.avg_glucose_level?.toFixed(3)}`, decision: `level=${riskLevel}`, next: "FairnessAgent" },
+                    { agent: "FairnessAgent", color: "#D4A017", action: "check_subgroups", output: `warnings=${fairness.warnings.length}, flags=[${fairness.flags.join(",")}]`, decision: fairness.warnings.length > 0 ? "WARNINGS" : "OK", next: "ProtocolAdvisor" },
+                    { agent: "ProtocolAdvisor", color: "#534AB7", action: "recommendation_tot", output: `selected=${recToT.selected?.label}`, decision: recToT.selected?.action, next: "SafetyAuditor" },
+                    { agent: "SafetyAuditor", color: "#D94040", action: "validate", output: `violations=${safety.violations.length}`, decision: safety.gate, next: "EscalationCoord" },
+                    { agent: "EscalationCoord", color: "#888", action: "route", output: `urgency=${riskLevel.toLowerCase()}`, decision: "PENDING clinician sign-off", next: "END" },
+                  ] : []),
+                ].map((step, i) => (
+                  <div key={i} style={{ padding: "8px 12px", background: "#faf9ff", borderRadius: 8, borderLeft: `3px solid ${step.color}`, marginBottom: 6, fontSize: 12, lineHeight: 1.7, color: "#555" }}>
+                    <span style={{ fontWeight: 600, color: step.color }}>{step.agent}</span>
+                    {" → "}<span style={{ color: "#888" }}>Action:</span> {step.action}
+                    {" · "}<span style={{ color: "#888" }}>Output:</span> {step.output}
+                    {" · "}<span style={{ color: "#888" }}>Decision:</span> <strong>{step.decision}</strong>
+                    {" · "}<span style={{ color: "#888" }}>Next:</span> {step.next}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={s.note("#f0f4ff", "#534AB7")}>
-            <strong>CMU Agentic AI Capstone:</strong> SENTRA implements ReAct reasoning loops, Tree-of-Thought for recommendation decisions, RAG with clinical protocol corpus, deterministic clinical scoring tools, structured execution logging, fairness auditing, and a safety auditor gate — all coordinated via LangGraph state machine.
+            <strong>Clinical note:</strong> SENTRA's recommendation requires clinician sign-off before action. The ML model is optimized for screening sensitivity (recall = 80%). This is not a diagnostic instrument.
           </div>
         </>
       )}
 
-      {/* ─── TAB 2: Model Comparison (was Tab 1) ─── */}
-      {tab === 2 && (
+      {/* ─── TAB 1: Models + Calibration ─── */}
+      {tab === 1 && (
         <>
           <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
             <Metric label="Best model" value="Logistic Reg." sub="Balanced class weights" />
@@ -568,41 +493,52 @@ export default function App() {
             </div>
           </div>
 
-          {/* Calibration metrics (Addition #4) */}
+          {/* ═══ Calibration metrics (Addition #4) ═══ */}
           <div style={s.card}>
-            <div style={s.h2}>Calibration metrics</div>
+            <div style={s.h2}>Calibration analysis</div>
             <p style={{ ...s.muted, marginBottom: 14 }}>When the model says 70% risk, do ~70% of those patients actually have strokes?</p>
             <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-              <Metric label="Brier Score" value={CALIBRATION_DATA.logistic.brier.toFixed(3)} sub="Lower is better (0 = perfect)" />
-              <Metric label="ECE" value={CALIBRATION_DATA.logistic.ece.toFixed(3)} sub="Expected Calibration Error" />
-              <Metric label="Max CE" value={CALIBRATION_DATA.logistic.maxCE.toFixed(3)} sub="Worst single-bin gap" />
+              <Metric label="Brier Score" value={CALIBRATION_DATA.brier.toFixed(3)} sub="Lower = better (0 = perfect)" />
+              <Metric label="ECE" value={CALIBRATION_DATA.ece.toFixed(3)} sub="Expected Calibration Error" />
+              <Metric label="Max CE" value={CALIBRATION_DATA.maxCE.toFixed(3)} sub="Worst single-bin gap" />
             </div>
 
             <div style={s.h3}>Reliability diagram</div>
             <div style={{ display: "flex", gap: 12, marginBottom: 8, fontSize: 10, color: "#888" }}>
               <span style={{ width: 40, textAlign: "right" }}>Pred.</span>
               <span style={{ flex: 1, textAlign: "center" }}>
-                <span style={{ display: "inline-block", width: 10, height: 10, background: "#e0def5", borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} />
-                Predicted
-                <span style={{ display: "inline-block", width: 10, height: 10, background: "#534AB7", borderRadius: 2, marginLeft: 10, marginRight: 4, verticalAlign: "middle" }} />
-                Actual
+                <span style={{ display: "inline-block", width: 10, height: 10, background: "#e0def5", borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} /> Predicted
+                <span style={{ display: "inline-block", width: 10, height: 10, background: "#534AB7", borderRadius: 2, marginLeft: 10, marginRight: 4, verticalAlign: "middle" }} /> Actual
               </span>
               <span style={{ width: 40, textAlign: "right" }}>Actual</span>
               <span style={{ width: 30, textAlign: "right" }}>Gap</span>
               <span style={{ width: 35 }}></span>
             </div>
-            {CALIBRATION_DATA.logistic.bins.map((bin, i) => (
-              <CalibrationBar key={i} predicted={bin.predicted} actual={bin.actual} count={bin.count} maxCount={2890} />
-            ))}
+            {CALIBRATION_DATA.bins.map((bin, i) => {
+              const gap = Math.abs(bin.actual - bin.predicted);
+              const gc = gap < 0.05 ? "#1D9E75" : gap < 0.10 ? "#D4A017" : "#D94040";
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, fontSize: 12 }}>
+                  <span style={{ width: 40, textAlign: "right", color: "#888" }}>{bin.predicted.toFixed(2)}</span>
+                  <div style={{ flex: 1, position: "relative", height: 20 }}>
+                    <div style={{ position: "absolute", width: `${bin.predicted * 100}%`, height: "100%", background: "#e0def5", borderRadius: 3, opacity: 0.5 }} />
+                    <div style={{ position: "absolute", width: `${bin.actual * 100}%`, height: "100%", background: "#534AB7", borderRadius: 3, opacity: 0.8 }} />
+                  </div>
+                  <span style={{ width: 40, textAlign: "right", color: "#666" }}>{bin.actual.toFixed(2)}</span>
+                  <span style={{ width: 30, textAlign: "right", color: gc, fontWeight: 500, fontSize: 11 }}>{gap.toFixed(2)}</span>
+                  <span style={{ width: 35, textAlign: "right", color: "#bbb", fontSize: 11 }}>n={bin.count}</span>
+                </div>
+              );
+            })}
             <div style={{ ...s.muted, marginTop: 12 }}>
-              ECE of 0.067 indicates good calibration — predicted probabilities roughly match observed rates. Gap increases at higher predicted probabilities where fewer samples exist.
+              ECE of 0.067 indicates good calibration — predicted probabilities roughly match observed stroke rates. Gap increases at higher predicted probabilities where fewer training samples exist.
             </div>
           </div>
 
-          {/* Fairness subgroup analysis (Addition #5) */}
+          {/* ═══ Fairness subgroup analysis (Addition #5) ═══ */}
           <div style={s.card}>
             <div style={s.h2}>Fairness: subgroup performance</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>Model recall and AUC broken down by demographic subgroups</p>
+            <p style={{ ...s.muted, marginBottom: 14 }}>Model recall and AUC across demographic subgroups — identifies blind spots</p>
 
             <div style={s.h3}>By age group</div>
             <div style={{ overflowX: "auto", marginBottom: 16 }}>
@@ -618,9 +554,7 @@ export default function App() {
                   {FAIRNESS_DATA.ageGroups.map(g => (
                     <tr key={g.group} style={{ borderBottom: "1px solid #f0f0f0", background: g.flag ? "#fff8f0" : "transparent" }}>
                       <td style={{ padding: 10, fontWeight: 500 }}>{g.group}</td>
-                      <td style={{ textAlign: "center", padding: 10, color: g.recall === 0 ? "#D94040" : g.recall < 0.5 ? "#D4A017" : "#1D9E75", fontWeight: 600 }}>
-                        {(g.recall * 100).toFixed(1)}%
-                      </td>
+                      <td style={{ textAlign: "center", padding: 10, color: g.recall === 0 ? "#D94040" : g.recall < 0.5 ? "#D4A017" : "#1D9E75", fontWeight: 600 }}>{(g.recall * 100).toFixed(1)}%</td>
                       <td style={{ textAlign: "center", padding: 10 }}>{g.auc.toFixed(2)}</td>
                       <td style={{ textAlign: "center", padding: 10, color: "#888" }}>{g.n.toLocaleString()}</td>
                       <td style={{ textAlign: "center", padding: 10 }}>
@@ -657,21 +591,16 @@ export default function App() {
           </div>
 
           <div style={s.note("#fff0f0", "#D94040")}>
-            <strong>Critical finding:</strong> The model has 0% recall for patients under 55 — it misses every stroke case in younger patients. Age (SHAP = 1.713) dominates so heavily that younger patients never reach the prediction threshold. The Fairness Agent flags this blind spot and the Safety Auditor ensures clinical judgment overrides the model for this subgroup.
+            <strong>Critical finding:</strong> 0% recall for patients under 55 — the model misses every stroke in younger patients. Age (SHAP = 1.713) dominates so heavily that younger patients never reach the prediction threshold. The Fairness Agent flags this, and the Safety Auditor ensures clinical judgment overrides the ML for this subgroup.
           </div>
-          <div style={{ height: 12 }} />
           <div style={s.note("#fff8f0", "#D4A017")}>
-            <strong>Why recall matters most:</strong> In stroke screening, a false negative (missing a stroke patient) is far more dangerous than a false positive (flagging a healthy patient for follow-up testing). A naive "predict no stroke" model achieves 95.1% accuracy but 0% recall — completely useless clinically.
-          </div>
-          <div style={{ height: 12 }} />
-          <div style={s.note("#f0fff5", "#1D9E75")}>
-            <strong>Class imbalance:</strong> Only 4.87% of patients had strokes (249 of 5,110). We used SMOTE oversampling on training data only and cost-sensitive learning to prevent the model from ignoring the minority class.
+            <strong>Why recall matters most:</strong> In stroke screening, a false negative (missing a stroke patient) is far more dangerous than a false positive. A naive "predict no stroke" model gets 95.1% accuracy but 0% recall — clinically useless.
           </div>
         </>
       )}
 
-      {/* ─── TAB 3: Risk Factors (was Tab 2) ─── */}
-      {tab === 3 && (
+      {/* ─── TAB 2: Risk Factors ─── */}
+      {tab === 2 && (
         <>
           <div style={s.card}>
             <div style={s.h2}>Global SHAP feature importance</div>
@@ -693,7 +622,7 @@ export default function App() {
                 <button onClick={() => setExpandedFactor(expandedFactor === i ? null : i)} style={{
                   width: "100%", textAlign: "left", padding: "12px 16px", border: "1px solid " + (expandedFactor === i ? "#534AB7" : "#eee"),
                   borderRadius: expandedFactor === i ? "10px 10px 0 0" : 10, background: expandedFactor === i ? "#f8f7ff" : "#fff",
-                  cursor: "pointer", fontFamily: "inherit", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", transition: "all 0.2s",
+                  cursor: "pointer", fontFamily: "inherit", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center",
                 }}>
                   <span><span style={{ fontWeight: 600 }}>{rf.feature}</span><span style={{ color: "#999", marginLeft: 10, fontSize: 12 }}>SHAP: {rf.shap.toFixed(3)}</span></span>
                   <span style={{ color: "#534AB7", fontSize: 18, fontWeight: 300 }}>{expandedFactor === i ? "−" : "+"}</span>
@@ -706,24 +635,18 @@ export default function App() {
               </div>
             ))}
           </div>
-
-          <div style={s.note("#f0f4ff", "#534AB7")}>
-            <strong>Research insight:</strong> SHAP values quantitatively confirm what neurovascular literature has established — age-related cerebrovascular degeneration, hypertension-driven arterial damage, and glucose-mediated endothelial dysfunction are the dominant pathways. This alignment between data-driven ML features and established neuroscience validates the model's clinical plausibility.
-          </div>
         </>
       )}
 
-      {/* ─── TAB 4: Methodology (was Tab 3) ─── */}
-      {tab === 4 && (
+      {/* ─── TAB 3: Methodology ─── */}
+      {tab === 3 && (
         <>
           <div style={s.card}>
             <div style={s.h2}>Machine learning pipeline</div>
             <p style={{ ...s.muted, marginBottom: 18 }}>End-to-end workflow from raw patient data to explainable risk predictions</p>
             {METHODOLOGY_STEPS.map((step, i) => (
               <div key={i} style={{ display: "flex", gap: 16, marginBottom: 18, alignItems: "flex-start" }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#f0eeff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: "#534AB7", flexShrink: 0 }}>
-                  {i + 1}
-                </div>
+                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#f0eeff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: "#534AB7", flexShrink: 0 }}>{i + 1}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{step.title}</div>
                   <div style={{ fontSize: 13, color: "#666", lineHeight: 1.7 }}>{step.desc}</div>
@@ -732,16 +655,41 @@ export default function App() {
             ))}
           </div>
 
+          {/* SENTRA agent architecture */}
+          <div style={s.card}>
+            <div style={s.h2}>SENTRA agent architecture</div>
+            <p style={{ ...s.muted, marginBottom: 14 }}>6 specialized agents coordinated via LangGraph state machine</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", padding: "12px 0" }}>
+              {[
+                { name: "Signal Monitor", color: "#1D9E75", desc: "Data validation + Tier-1 gate" },
+                { name: "Risk Assessor", color: "#534AB7", desc: "ML + SHAP + differential" },
+                { name: "Fairness Agent", color: "#D4A017", desc: "Demographic blind spots" },
+                { name: "Protocol Advisor", color: "#534AB7", desc: "RAG + Rec. ToT" },
+                { name: "Safety Auditor", color: "#D94040", desc: "Final safety gate" },
+                { name: "Escalation Coord.", color: "#888", desc: "Route to clinician" },
+              ].map((agent, i, arr) => (
+                <React.Fragment key={agent.name}>
+                  <div style={{ padding: "10px 14px", background: agent.color + "10", border: `1px solid ${agent.color}40`, borderRadius: 10, textAlign: "center", minWidth: 95 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: agent.color }}>{agent.name}</div>
+                    <div style={{ fontSize: 10, color: "#888", marginTop: 2 }}>{agent.desc}</div>
+                  </div>
+                  {i < arr.length - 1 && <div style={{ display: "flex", alignItems: "center", color: "#ccc", fontSize: 18 }}>&#8594;</div>}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
           <div style={s.card}>
             <div style={s.h2}>Key technical decisions</div>
             <div style={{ display: "grid", gap: 12 }}>
               {[
-                ["KNN imputation over mean/median", "KNN imputation preserves relationships between BMI and other features (age, glucose). Mean imputation introduces bias by ignoring correlations."],
-                ["SMOTE on training set only", "Applying SMOTE to the full dataset before splitting would leak synthetic minority samples into the test set, producing overly optimistic evaluation metrics."],
-                ["Recall as primary metric", "In clinical screening, the cost of missing a stroke patient (false negative) vastly exceeds the cost of an unnecessary follow-up (false positive). Optimizing for recall prioritizes patient safety."],
-                ["SHAP over permutation importance", "SHAP provides theoretically grounded, consistent feature attributions at both global and individual patient levels — critical for clinical interpretability and building physician trust."],
-                ["Tree-of-Thought for recommendations, not prediction", "ToT is used to decide the action (routine vs expedited vs urgent) — a genuine search problem with safety constraints. The prediction stays deterministic."],
-                ["Safety Auditor as final gate", "Every recommendation passes through a safety auditor that blocks contraindicated actions (e.g., thrombolysis for hemorrhagic stroke) and catches LLM hallucinations before output."],
+                ["KNN imputation over mean/median", "Preserves relationships between BMI and other features. Mean imputation introduces bias by ignoring correlations."],
+                ["SMOTE on training set only", "Applying SMOTE before splitting leaks synthetic samples into the test set, producing overly optimistic metrics."],
+                ["Recall as primary metric", "Missing a stroke patient (false negative) is far more dangerous than an unnecessary follow-up (false positive)."],
+                ["SHAP over permutation importance", "Provides theoretically grounded, consistent attributions at both global and individual patient levels."],
+                ["Tree-of-Thought for recommendations", "ToT decides the action (routine vs expedited vs urgent) — a search problem with safety constraints. Prediction stays deterministic."],
+                ["Safety Auditor as final gate", "Blocks contraindicated actions and catches hallucinations before output reaches the clinician."],
+                ["Fairness Agent in parallel", "Checks known demographic blind spots (0% recall under 55) before recommendations are finalized."],
               ].map(([title, desc], i) => (
                 <div key={i} style={{ padding: "12px 16px", background: "#faf9ff", borderRadius: 10, borderLeft: "3px solid #534AB7" }}>
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{title}</div>
@@ -762,45 +710,43 @@ export default function App() {
         </>
       )}
 
-      {/* ─── TAB 5: About (was Tab 4) ─── */}
-      {tab === 5 && (
+      {/* ─── TAB 4: About ─── */}
+      {tab === 4 && (
         <>
           <div style={s.card}>
             <div style={s.h2}>About this project</div>
             <p style={{ fontSize: 14, lineHeight: 1.8, color: "#555", marginBottom: 16 }}>
-              This project develops a machine learning-based screening tool for stroke risk prediction,
-              with a focus on clinical applicability, explainability, and safety. Unlike typical ML classification projects
-              that optimize for accuracy, this tool is designed around the asymmetric cost structure of
-              medical screening — where missing an at-risk patient is far worse than a false alarm.
+              SENTRA (Stroke Early-warning and Neuro Triage Response Agent) is a multi-agent clinical decision support system
+              that combines machine learning prediction with SHAP explainability, fairness auditing, Tree-of-Thought recommendation
+              reasoning, and safety guardrails. It goes beyond simple risk prediction — it runs a full triage pipeline that
+              checks for demographic blind spots, reasons about the best clinical action, validates that recommendation
+              against safety rules, and provides full provenance traceability for every claim.
             </p>
             <p style={{ fontSize: 14, lineHeight: 1.8, color: "#555", marginBottom: 16 }}>
-              The SENTRA (Stroke Early-warning and Neuro Triage Response Agent) pipeline extends the ML prediction
-              with a multi-agent clinical decision support system built on LangGraph, featuring fairness auditing,
-              safety guardrails, Tree-of-Thought recommendation reasoning, and full provenance traceability — developed
-              as part of the CMU Agentic AI capstone program.
-            </p>
-
-            <div style={s.h3}>Dataset</div>
-            <p style={{ fontSize: 13, color: "#666", lineHeight: 1.7, marginBottom: 16 }}>
-              Kaggle Stroke Prediction Dataset (McKinsey and Company) — 5,110 patients, 11 clinical features,
-              binary target. Severe class imbalance: only 4.87% stroke-positive cases.
+              Developed as part of independent research in applying machine learning to clinical neuroscience,
+              with the agent pipeline developed for the CMU Agentic AI capstone program.
             </p>
 
             <div style={s.h3}>Key findings</div>
             <ul style={{ fontSize: 13, color: "#666", lineHeight: 2, paddingLeft: 20, marginBottom: 16 }}>
-              <li>Logistic Regression with balanced weights achieves 80% recall and 0.838 AUC-ROC, outperforming complex ensembles on clinical sensitivity</li>
-              <li>Age is the overwhelmingly dominant predictor (SHAP: 1.713), consistent with known cerebrovascular pathophysiology</li>
-              <li>Critical fairness finding: 0% recall for patients under 55 — the Fairness Agent flags this blind spot</li>
-              <li>Calibration analysis: Brier Score 0.146, ECE 0.067 — good calibration at common probability ranges</li>
-              <li>Safety Auditor gate prevents contraindicated recommendations (e.g., thrombolysis for hemorrhagic stroke)</li>
+              <li>Logistic Regression with balanced weights: 80% recall, 0.838 AUC-ROC</li>
+              <li>Age is the dominant predictor (SHAP: 1.713) — consistent with cerebrovascular pathophysiology</li>
+              <li>Critical fairness finding: 0% recall for patients under 55</li>
+              <li>Calibration: Brier Score 0.146, ECE 0.067</li>
+              <li>Safety Auditor prevents contraindicated recommendations</li>
             </ul>
+
+            <div style={s.h3}>Dataset</div>
+            <p style={{ fontSize: 13, color: "#666", lineHeight: 1.7, marginBottom: 16 }}>
+              Kaggle Stroke Prediction Dataset (McKinsey and Company) — 5,110 patients, 11 clinical features, 4.87% stroke-positive.
+            </p>
 
             <div style={s.h3}>Limitations</div>
             <ul style={{ fontSize: 13, color: "#666", lineHeight: 2, paddingLeft: 20 }}>
               <li>Cross-sectional dataset — no temporal/longitudinal modeling</li>
               <li>Missing features: atrial fibrillation, cholesterol, family history, medications</li>
               <li>SMOTE may introduce synthetic artifacts in minority class</li>
-              <li>Single-source data limits generalizability across populations</li>
+              <li>Single-source data limits generalizability</li>
             </ul>
           </div>
 
@@ -808,11 +754,8 @@ export default function App() {
             <div style={s.h2}>Author</div>
             <p style={{ fontSize: 14, color: "#666", lineHeight: 1.7 }}>
               Jahnavi Nimmakayala — High school researcher with a focus on neuroscience and computational biology.
-              This project was developed as part of independent research in applying machine learning
-              to clinical neuroscience problems, with the SENTRA agent pipeline developed for the
-              CMU Agentic AI capstone program.
             </p>
-            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+            <div style={{ marginTop: 12 }}>
               <a href="https://github.com/jahnavin123/stroke-risk-predictor" target="_blank" rel="noreferrer"
                 style={{ padding: "6px 14px", background: "#2d2a4a", color: "#fff", borderRadius: 8, fontSize: 12, textDecoration: "none", fontWeight: 500 }}>
                 GitHub Repository
@@ -827,7 +770,7 @@ export default function App() {
       )}
 
       <footer style={{ textAlign: "center", padding: "28px 0 12px", fontSize: 11, color: "#ccc" }}>
-        Built with scikit-learn, XGBoost, SHAP, LangGraph, React — BioAI Lab — For research purposes only
+        SENTRA — Built with scikit-learn, SHAP, LangGraph, React — BioAI Lab — For research purposes only
       </footer>
     </div>
   );
