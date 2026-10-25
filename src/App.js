@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from "react";
 
-/* ─── constants with REAL Kaggle data ─── */
+/* ─── Data constants ─── */
 const FEATURES = {
   age: { label: "Age", min: 1, max: 82, step: 1, default: 55, unit: "years" },
-  avg_glucose_level: { label: "Avg glucose level", min: 55, max: 280, step: 1, default: 110, unit: "mg/dL" },
+  avg_glucose_level: { label: "Avg glucose", min: 55, max: 280, step: 1, default: 110, unit: "mg/dL" },
   bmi: { label: "BMI", min: 10, max: 60, step: 0.5, default: 28, unit: "kg/m²" },
 };
 
@@ -32,22 +32,21 @@ const MODELS = [
 
 const NEURO_FACTORS = [
   { feature: "Age", shap: 1.713, detail: "Stroke risk doubles each decade after 55. Aging causes progressive atherosclerosis and cerebral small vessel disease — cumulative damage to the vasculature that supplies the brain. Age-related changes include arterial stiffening, loss of endothelial nitric oxide production, and increased susceptibility to thrombosis." },
-  { feature: "Hypertension", shap: 0.153, detail: "Chronic high blood pressure is the single most modifiable risk factor for stroke. It damages arterial walls through mechanical shear stress, promotes atherosclerotic plaque formation in the carotid and cerebral arteries, and weakens small penetrating arteries in the brain, predisposing to both lacunar infarcts and intracerebral hemorrhage." },
-  { feature: "Avg glucose level", shap: 0.152, detail: "Chronic hyperglycemia damages endothelial cells lining cerebral blood vessels through advanced glycation end products (AGEs). These AGEs promote oxidative stress, inflammation, and a pro-thrombotic state in the cerebral vasculature. Diabetic patients have 2-4x higher stroke risk, with glucose toxicity directly impairing the blood-brain barrier." },
-  { feature: "Heart disease", shap: 0.030, detail: "Cardiac conditions — especially atrial fibrillation — are major embolic stroke risk factors. Irregular heart rhythm allows blood to pool in the left atrial appendage, forming clots that can travel through the carotid arteries to the brain (cardioembolic stroke). This mechanism accounts for approximately 20-30% of all ischemic strokes." },
-  { feature: "BMI", shap: 0.028, detail: "Obesity promotes stroke through multiple converging pathways: systemic inflammation (elevated CRP, IL-6), insulin resistance leading to endothelial dysfunction, dyslipidemia accelerating atherosclerotic plaque formation, and increased blood viscosity. Central adiposity is particularly correlated with cerebrovascular events due to visceral fat's metabolic activity." },
+  { feature: "Hypertension", shap: 0.153, detail: "Chronic high blood pressure is the single most modifiable risk factor for stroke. It damages arterial walls through mechanical shear stress, promotes atherosclerotic plaque formation in the carotid and cerebral arteries, and weakens small penetrating arteries in the brain." },
+  { feature: "Avg glucose level", shap: 0.152, detail: "Chronic hyperglycemia damages endothelial cells lining cerebral blood vessels through advanced glycation end products (AGEs). Diabetic patients have 2-4x higher stroke risk, with glucose toxicity directly impairing the blood-brain barrier." },
+  { feature: "Heart disease", shap: 0.030, detail: "Cardiac conditions — especially atrial fibrillation — are major embolic stroke risk factors. Irregular heart rhythm allows blood to pool in the left atrial appendage, forming clots that can travel to the brain. This accounts for approximately 20-30% of all ischemic strokes." },
+  { feature: "BMI", shap: 0.028, detail: "Obesity promotes stroke through systemic inflammation, insulin resistance leading to endothelial dysfunction, dyslipidemia accelerating atherosclerotic plaque formation, and increased blood viscosity." },
 ];
 
 const METHODOLOGY_STEPS = [
-  { title: "Data collection", desc: "5,110 patient records with 11 clinical features from the Kaggle Stroke Prediction Dataset (McKinsey & Company)" },
-  { title: "Preprocessing", desc: "KNN imputation for 201 missing BMI values (preserves feature relationships better than mean/median), label encoding for categoricals, StandardScaler normalization" },
-  { title: "Class imbalance handling", desc: "SMOTE oversampling on training data only (not test set) + cost-sensitive learning via balanced class weights. Only 4.87% positive class — a naive model achieves 95% accuracy by predicting 'no stroke' every time" },
-  { title: "Model training & evaluation", desc: "6 algorithms compared via stratified train/test split. Primary metric: recall (sensitivity), because missing a stroke patient is far more dangerous than a false alarm" },
-  { title: "Explainability", desc: "SHAP (SHapley Additive exPlanations) provides both global feature importance and individual patient-level explanations — clinicians can see why each patient is flagged" },
-  { title: "Threshold optimization", desc: "Classification threshold lowered from 0.5 to 0.3 for clinical screening — catches more at-risk patients at the cost of some false positives, an appropriate tradeoff for a screening tool" },
+  { title: "Data collection", desc: "5,110 patient records with 11 clinical features from the Kaggle Stroke Prediction Dataset (McKinsey & Company)", icon: "📊" },
+  { title: "Preprocessing", desc: "KNN imputation for 201 missing BMI values, label encoding for categoricals, StandardScaler normalization", icon: "🔧" },
+  { title: "Class imbalance", desc: "SMOTE oversampling on training data only + cost-sensitive learning via balanced class weights. Only 4.87% positive class", icon: "⚖️" },
+  { title: "Model training", desc: "6 algorithms compared via stratified train/test split. Primary metric: recall — missing a stroke is far worse than a false alarm", icon: "🧠" },
+  { title: "Explainability", desc: "SHAP provides global feature importance and individual patient-level explanations — clinicians see why each patient is flagged", icon: "🔍" },
+  { title: "Threshold tuning", desc: "Classification threshold lowered from 0.5 to 0.3 for clinical screening — catches more at-risk patients", icon: "🎯" },
 ];
 
-/* ─── Calibration data (Addition #4) ─── */
 const CALIBRATION_DATA = {
   brier: 0.146, ece: 0.067, maxCE: 0.142,
   bins: [
@@ -64,14 +63,13 @@ const CALIBRATION_DATA = {
   ],
 };
 
-/* ─── Fairness subgroup data (Addition #5) ─── */
 const FAIRNESS_DATA = {
   ageGroups: [
     { group: "Under 40", recall: 0.0, auc: 0.72, n: 2241, flag: true },
-    { group: "40-54", recall: 0.0, auc: 0.74, n: 1087, flag: true },
-    { group: "55-64", recall: 0.45, auc: 0.79, n: 789, flag: false },
-    { group: "65-74", recall: 0.72, auc: 0.83, n: 612, flag: false },
-    { group: "75+", recall: 0.89, auc: 0.87, n: 381, flag: false },
+    { group: "40–54", recall: 0.0, auc: 0.74, n: 1087, flag: true },
+    { group: "55–64", recall: 0.45, auc: 0.79, n: 789 },
+    { group: "65–74", recall: 0.72, auc: 0.83, n: 612 },
+    { group: "75+", recall: 0.89, auc: 0.87, n: 381 },
   ],
   genderGroups: [
     { group: "Female", recall: 0.76, auc: 0.83, n: 2994 },
@@ -79,16 +77,9 @@ const FAIRNESS_DATA = {
   ],
 };
 
-/* ─── SENTRA agent functions ─── */
+/* ─── SENTRA pipeline functions ─── */
 
 function computeRisk(sliders, selects) {
-  /*
-    Logistic Regression coefficients from the trained model (StandardScaler-normalized).
-    The model was trained on StandardScaler-transformed features.
-    We replicate: z = (x - mean) / std, then logit = intercept + sum(coef * z).
-
-    Training set statistics (from Kaggle Stroke dataset, 5110 patients):
-  */
   const stats = {
     age:               { mean: 43.23, std: 22.61, coef: 2.45 },
     avg_glucose_level: { mean: 106.15, std: 45.28, coef: 0.32 },
@@ -101,48 +92,32 @@ function computeRisk(sliders, selects) {
     smoking_smokes:    { mean: 0.155, std: 0.362, coef: 0.12 },
   };
   const intercept = -3.82;
-
-  // Standardize inputs & compute contributions
   const raw = {
-    age: sliders.age,
-    avg_glucose_level: sliders.avg_glucose_level,
-    bmi: sliders.bmi,
-    hypertension: Number(selects.hypertension),
-    heart_disease: Number(selects.heart_disease),
-    gender: Number(selects.gender),
-    ever_married: Number(selects.ever_married),
+    age: sliders.age, avg_glucose_level: sliders.avg_glucose_level, bmi: sliders.bmi,
+    hypertension: Number(selects.hypertension), heart_disease: Number(selects.heart_disease),
+    gender: Number(selects.gender), ever_married: Number(selects.ever_married),
     smoking_formerly: selects.smoking_status === "1" ? 1 : 0,
     smoking_smokes: selects.smoking_status === "3" ? 1 : 0,
   };
-
   const c = {};
   let logit = intercept;
-  for (const [feat, s] of Object.entries(stats)) {
-    const z = (raw[feat] - s.mean) / s.std;
-    const contribution = s.coef * z;
+  for (const [feat, st] of Object.entries(stats)) {
+    const z = (raw[feat] - st.mean) / st.std;
+    const contribution = st.coef * z;
     logit += contribution;
-    // Map back to user-friendly feature names
     if (feat === "smoking_formerly" || feat === "smoking_smokes") {
       c["smoking_status"] = (c["smoking_status"] || 0) + contribution;
-    } else {
-      c[feat] = contribution;
-    }
+    } else { c[feat] = contribution; }
   }
-
   return { prob: 1 / (1 + Math.exp(-logit)), contributions: c };
 }
 
-/* Agent 1: Signal Monitor */
 function signalMonitor(pct) {
   return { escalate: pct >= 10, reason: pct >= 10 ? "Risk score warrants full assessment" : "Low risk — Tier-1 stop" };
 }
 
-/* Agent 2: Risk Assessor — already done by computeRisk + SHAP */
-
-/* Agent 3: Fairness Agent (Addition #5) */
 function fairnessAgent(age, gender) {
-  const warnings = [];
-  const flags = [];
+  const warnings = []; const flags = [];
   if (age < 55) {
     warnings.push({ severity: "high", text: `Patient age ${age} is in the under-55 subgroup where the model has 0% recall. ML prediction is unreliable — clinical judgment must take priority.` });
     flags.push("age_blind_spot");
@@ -154,88 +129,63 @@ function fairnessAgent(age, gender) {
   return { warnings, flags, subgroup: age < 55 ? "under_55" : "55_plus" };
 }
 
-/* Agent 4: Protocol Advisor — Recommendation ToT (Addition #1) */
 function recommendationToT(riskPct, age, hasHypertension, hasHeartDisease) {
   const branches = [];
+  if (riskPct < 15 && age < 55) branches.push({ action: "routine_followup", label: "Routine follow-up", score: "likely", rationale: "Low risk, younger patient — standard screening interval", pruned: false });
+  else if (riskPct >= 40) branches.push({ action: "routine_followup", label: "Routine follow-up", score: "impossible", rationale: `Risk ${riskPct}% too high — routine unsafe`, pruned: true });
+  else branches.push({ action: "routine_followup", label: "Routine follow-up", score: "possible", rationale: "No hard contraindication but risk factors present", pruned: false });
 
-  // Branch 1: Routine follow-up
-  if (riskPct < 15 && age < 55) {
-    branches.push({ action: "routine_followup", label: "Routine follow-up", score: "likely", rationale: "Low risk score, younger patient — standard screening interval", pruned: false });
-  } else if (riskPct >= 40) {
-    branches.push({ action: "routine_followup", label: "Routine follow-up", score: "impossible", rationale: `Risk ${riskPct}% too high — routine follow-up unsafe`, pruned: true });
-  } else {
-    branches.push({ action: "routine_followup", label: "Routine follow-up", score: "possible", rationale: "No hard contraindication but risk factors present", pruned: false });
-  }
+  if (riskPct >= 20 && riskPct < 50) branches.push({ action: "clinician_review", label: "Clinician review", score: "likely", rationale: `Moderate risk ${riskPct}% warrants same-day evaluation`, pruned: false });
+  else branches.push({ action: "clinician_review", label: "Clinician review", score: "possible", rationale: "Could be appropriate but no strong signal", pruned: false });
 
-  // Branch 2: Clinician review
-  if (riskPct >= 20 && riskPct < 50) {
-    branches.push({ action: "clinician_review", label: "Clinician review (expedited)", score: "likely", rationale: `Moderate risk ${riskPct}% warrants same-day evaluation`, pruned: false });
-  } else {
-    branches.push({ action: "clinician_review", label: "Clinician review (expedited)", score: "possible", rationale: "Could be appropriate but no strong signal", pruned: false });
-  }
-
-  // Branch 3: Urgent evaluation
-  if (riskPct >= 50) {
-    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation — stroke alert", score: "sure", rationale: `Risk ${riskPct}% — high risk requires immediate workup`, pruned: false });
-  } else if (hasHypertension && hasHeartDisease && age >= 65) {
-    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation — stroke alert", score: "likely", rationale: "Multiple comorbidities in elderly patient", pruned: false });
-  } else {
-    branches.push({ action: "urgent_evaluation", label: "Urgent evaluation — stroke alert", score: riskPct < 15 ? "impossible" : "possible", rationale: riskPct < 15 ? "No acute signals" : "Not excluded but not strongly indicated", pruned: riskPct < 15 });
-  }
+  if (riskPct >= 50) branches.push({ action: "urgent_evaluation", label: "Urgent evaluation", score: "sure", rationale: `Risk ${riskPct}% — immediate workup required`, pruned: false });
+  else if (hasHypertension && hasHeartDisease && age >= 65) branches.push({ action: "urgent_evaluation", label: "Urgent evaluation", score: "likely", rationale: "Multiple comorbidities in elderly patient", pruned: false });
+  else branches.push({ action: "urgent_evaluation", label: "Urgent evaluation", score: riskPct < 15 ? "impossible" : "possible", rationale: riskPct < 15 ? "No acute signals" : "Not strongly indicated", pruned: riskPct < 15 });
 
   const scoreOrder = { sure: 3, likely: 2, possible: 1, impossible: 0 };
   const survivors = branches.filter(b => !b.pruned).sort((a, b) => scoreOrder[b.score] - scoreOrder[a.score]);
   return { branches, selected: survivors[0] || null };
 }
 
-/* Agent 5: Safety Auditor (Addition #5) */
 function safetyAuditor(riskPct, fairness, recommendation) {
   const violations = [];
-  if (fairness.flags.includes("age_blind_spot")) {
-    violations.push({ severity: "warn", rule: "AGE_BLIND_SPOT", detail: "ML model has 0% recall for this subgroup — clinical judgment must override." });
-  }
-  if (riskPct > 70 && recommendation === "routine_followup") {
-    violations.push({ severity: "block", rule: "MISROUTE", detail: "High-risk patient routed to routine follow-up — BLOCKED." });
-  }
-  if (riskPct > 50 && recommendation === "routine_followup") {
-    violations.push({ severity: "block", rule: "UNDERTRIAGE", detail: "Elevated risk patient cannot be sent to routine — requires expedited or urgent." });
-  }
+  if (fairness.flags.includes("age_blind_spot")) violations.push({ severity: "warn", rule: "AGE_BLIND_SPOT", detail: "Model has 0% recall for this subgroup — clinical judgment must override." });
+  if (riskPct > 70 && recommendation === "routine_followup") violations.push({ severity: "block", rule: "MISROUTE", detail: "High-risk patient routed to routine follow-up — BLOCKED." });
+  if (riskPct > 50 && recommendation === "routine_followup") violations.push({ severity: "block", rule: "UNDERTRIAGE", detail: "Elevated risk cannot be sent to routine — requires expedited or urgent." });
   const blocked = violations.filter(v => v.severity === "block");
   return { passed: blocked.length === 0, gate: blocked.length > 0 ? "BLOCKED" : "PASS", violations };
 }
 
-/* ─── small components ─── */
-const s = {
-  page: { maxWidth: 760, margin: "0 auto", padding: "0 20px 40px", fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif", color: "#2d2a4a" },
-  nav: { display: "flex", gap: 0, background: "#fff", borderRadius: 12, border: "1px solid #e8e6f0", padding: 4, marginBottom: 28, flexWrap: "wrap" },
-  card: { background: "#fff", borderRadius: 14, border: "1px solid #eae8f0", padding: "20px 24px", marginBottom: 16 },
-  muted: { fontSize: 12, color: "#999", lineHeight: 1.6 },
-  h2: { fontSize: 17, fontWeight: 600, marginBottom: 12 },
-  h3: { fontSize: 14, fontWeight: 600, marginBottom: 8 },
-  pill: (active) => ({
-    padding: "8px 16px", fontSize: 13, fontWeight: active ? 600 : 400, border: "none",
-    borderRadius: 8, cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s",
-    background: active ? "#534AB7" : "transparent", color: active ? "#fff" : "#888",
-  }),
-  note: (bg, accent) => ({ background: bg, borderLeft: "3px solid " + accent, borderRadius: "0 10px 10px 0", padding: "14px 18px", fontSize: 12, lineHeight: 1.7, color: "#555", marginBottom: 12 }),
-};
+/* ─── Shared styles ─── */
+const font = "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
-function HBar({ value, max, color }) {
+/* ─── Components ─── */
+
+function HBar({ value, max, color, height = 14 }) {
   const pct = max > 0 ? Math.min(Math.abs(value) / max * 100, 100) : 0;
-  return <div style={{ width: Math.round(pct) + "%", minWidth: 3, height: 18, borderRadius: 3, background: color, transition: "width 0.4s ease" }} />;
-}
-
-function Metric({ label, value, sub }) {
   return (
-    <div style={{ background: "#f8f7ff", borderRadius: 10, padding: "14px 16px", flex: "1 1 140px", minWidth: 130 }}>
-      <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: "#2d2a4a", marginTop: 4 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>{sub}</div>}
+    <div style={{ width: "100%", height, background: "#f0eff5", borderRadius: height / 2, overflow: "hidden" }}>
+      <div style={{ width: Math.round(pct) + "%", minWidth: 2, height: "100%", borderRadius: height / 2, background: color, transition: "width 0.4s ease" }} />
     </div>
   );
 }
 
-/* ─── main app ─── */
+function StatCard({ label, value, sub, accent }) {
+  return (
+    <div style={{ flex: "1 1 130px", minWidth: 120, padding: "18px 16px", background: "#fff", borderRadius: 16, border: "1px solid #eeedf5", boxShadow: "0 1px 4px rgba(83,74,183,0.04)" }}>
+      {accent && <div style={{ width: 28, height: 3, borderRadius: 2, background: accent, marginBottom: 10 }} />}
+      <div style={{ fontSize: 10, fontWeight: 600, color: "#a8a3c0", textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: "#1a1730", marginTop: 6, letterSpacing: -0.5 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: "#b0abca", marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function Badge({ children, color, bg }) {
+  return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color, background: bg }}>{children}</span>;
+}
+
+/* ─── Main App ─── */
 export default function App() {
   const [tab, setTab] = useState(0);
   const [sliders, setSliders] = useState({ age: 55, avg_glucose_level: 110, bmi: 28 });
@@ -243,20 +193,15 @@ export default function App() {
   const [expandedFactor, setExpandedFactor] = useState(null);
   const [showTrace, setShowTrace] = useState(false);
 
-  /* ─── Run SENTRA pipeline on every input change ─── */
   const { prob, contributions } = useMemo(() => computeRisk(sliders, selects), [sliders, selects]);
   const pct = Math.round(prob * 100);
   const riskLevel = pct < 20 ? "Low" : pct < 50 ? "Moderate" : "High";
-  const riskColor = pct < 20 ? "#1D9E75" : pct < 50 ? "#D4A017" : "#D94040";
-
-  // Agent 1: Signal Monitor
+  const riskColor = pct < 20 ? "#10B981" : pct < 50 ? "#F59E0B" : "#EF4444";
   const signal = useMemo(() => signalMonitor(pct), [pct]);
-  // Agent 3: Fairness Agent
   const fairness = useMemo(() => fairnessAgent(sliders.age, selects.gender), [sliders.age, selects.gender]);
-  // Agent 4: Recommendation ToT
   const recToT = useMemo(() => recommendationToT(pct, sliders.age, selects.hypertension === "1", selects.heart_disease === "1"), [pct, sliders.age, selects.hypertension, selects.heart_disease]);
-  // Agent 5: Safety Auditor
   const safety = useMemo(() => safetyAuditor(pct, fairness, recToT.selected?.action), [pct, fairness, recToT.selected]);
+  const recColor = recToT.selected?.action === "urgent_evaluation" ? "#EF4444" : recToT.selected?.action === "clinician_review" ? "#F59E0B" : "#10B981";
 
   const sortedC = Object.entries(contributions).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
   const maxC = Math.max(...sortedC.map(([, v]) => Math.abs(v)), 0.01);
@@ -265,52 +210,68 @@ export default function App() {
 
   const tabs = ["Risk assessment", "Models", "Risk factors", "Methodology", "About"];
 
-  const recColor = recToT.selected?.action === "urgent_evaluation" ? "#D94040"
-    : recToT.selected?.action === "clinician_review" ? "#D4A017" : "#1D9E75";
+  /* shared styles */
+  const card = { background: "#fff", borderRadius: 20, border: "1px solid #eeedf5", padding: "28px 28px", marginBottom: 20, boxShadow: "0 2px 12px rgba(83,74,183,0.04)" };
+  const sectionTitle = { fontSize: 13, fontWeight: 700, color: "#a8a3c0", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 16 };
+  const heading = { fontSize: 20, fontWeight: 700, color: "#1a1730", marginBottom: 6, letterSpacing: -0.3 };
+  const subtext = { fontSize: 13, color: "#8884a8", lineHeight: 1.6 };
+  const callout = (bg, accent) => ({ background: bg, borderLeft: `3px solid ${accent}`, borderRadius: "0 14px 14px 0", padding: "16px 20px", fontSize: 13, lineHeight: 1.7, color: "#555", marginBottom: 16 });
 
   return (
-    <div style={s.page}>
-      {/* header */}
-      <div style={{ textAlign: "center", padding: "36px 0 24px" }}>
-        <div style={{ display: "inline-block", background: "#f0eeff", padding: "4px 14px", borderRadius: 20, fontSize: 11, fontWeight: 600, letterSpacing: 1, color: "#534AB7", marginBottom: 10 }}>
-          SENTRA — STROKE EARLY-WARNING & NEURO TRIAGE RESPONSE AGENT
+    <div style={{ maxWidth: 820, margin: "0 auto", padding: "0 20px 60px", fontFamily: font, color: "#1a1730", WebkitFontSmoothing: "antialiased" }}>
+
+      {/* ═══ Header ═══ */}
+      <div style={{ textAlign: "center", padding: "48px 0 32px" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg, #6C63FF15, #534AB715)", padding: "6px 18px", borderRadius: 24, marginBottom: 16 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#6C63FF" }} />
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.5, color: "#6C63FF" }}>SENTRA</span>
         </div>
-        <h1 style={{ fontSize: 28, fontWeight: 700, margin: "8px 0 6px" }}>Stroke risk predictor</h1>
-        <p style={{ fontSize: 14, color: "#999", maxWidth: 540, margin: "0 auto" }}>
+        <h1 style={{ fontSize: 36, fontWeight: 800, margin: "0 0 8px", letterSpacing: -1, background: "linear-gradient(135deg, #1a1730, #534AB7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+          Stroke Risk Predictor
+        </h1>
+        <p style={{ fontSize: 15, color: "#8884a8", maxWidth: 520, margin: "0 auto", lineHeight: 1.6 }}>
           Multi-agent clinical decision support with ML prediction, SHAP explainability, fairness auditing, and safety guardrails
         </p>
       </div>
 
-      {/* nav */}
-      <nav style={s.nav}>
+      {/* ═══ Nav ═══ */}
+      <nav style={{ display: "flex", gap: 4, background: "#f8f7fc", borderRadius: 14, padding: 4, marginBottom: 32 }}>
         {tabs.map((t, i) => (
-          <button key={i} onClick={() => setTab(i)} style={s.pill(tab === i)}>{t}</button>
+          <button key={i} onClick={() => setTab(i)} style={{
+            flex: 1, padding: "10px 8px", fontSize: 13, fontWeight: tab === i ? 700 : 500, border: "none",
+            borderRadius: 10, cursor: "pointer", fontFamily: font, transition: "all 0.25s ease",
+            background: tab === i ? "#fff" : "transparent",
+            color: tab === i ? "#1a1730" : "#a8a3c0",
+            boxShadow: tab === i ? "0 2px 8px rgba(83,74,183,0.08)" : "none",
+          }}>{t}</button>
         ))}
       </nav>
 
-      {/* ─── TAB 0: Risk Assessment (full SENTRA pipeline) ─── */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* TAB 0: RISK ASSESSMENT (full SENTRA pipeline output)   */}
+      {/* ═══════════════════════════════════════════════════════ */}
       {tab === 0 && (
         <>
           {/* Patient input */}
-          <div style={s.card}>
-            <div style={s.h2}>Patient information</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div style={card}>
+            <div style={sectionTitle}>Patient information</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               {Object.entries(FEATURES).map(([k, f]) => (
                 <div key={k}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <label style={{ fontSize: 12, color: "#888" }}>{f.label}</label>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#534AB7" }}>{sliders[k]} {f.unit}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#8884a8" }}>{f.label}</label>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#6C63FF", background: "#6C63FF10", padding: "2px 10px", borderRadius: 6 }}>{sliders[k]} {f.unit}</span>
                   </div>
                   <input type="range" min={f.min} max={f.max} step={f.step} value={sliders[k]}
                     onChange={e => setSliders(p => ({ ...p, [k]: Number(e.target.value) }))}
-                    style={{ width: "100%", accentColor: "#534AB7" }} />
+                    style={{ width: "100%", accentColor: "#6C63FF", height: 6 }} />
                 </div>
               ))}
               {Object.entries(SELECTS).map(([k, v]) => (
                 <div key={k}>
-                  <label style={{ fontSize: 12, color: "#888", display: "block", marginBottom: 4 }}>{v.label}</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#8884a8", display: "block", marginBottom: 8 }}>{v.label}</label>
                   <select value={selects[k]} onChange={e => setSelects(p => ({ ...p, [k]: e.target.value }))}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", fontSize: 13, fontFamily: "inherit", background: "#fff" }}>
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #e8e6f0", fontSize: 13, fontFamily: font, background: "#faf9ff", color: "#1a1730", fontWeight: 500, outline: "none" }}>
                     {v.opts.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
                   </select>
                 </div>
@@ -318,209 +279,206 @@ export default function App() {
             </div>
           </div>
 
-          {/* Risk score */}
-          <div style={{ ...s.card, textAlign: "center", background: `linear-gradient(135deg, ${riskColor}06, ${riskColor}03)`, borderColor: riskColor + "33" }}>
-            <div style={{ fontSize: 11, color: "#888", textTransform: "uppercase", letterSpacing: 1 }}>ML risk prediction</div>
-            <div style={{ fontSize: 52, fontWeight: 700, color: riskColor, margin: "6px 0" }}>{pct}%</div>
-            <span style={{ display: "inline-block", padding: "4px 16px", borderRadius: 20, background: riskColor + "15", color: riskColor, fontSize: 13, fontWeight: 600 }}>{riskLevel} risk</span>
-            <div style={{ height: 8, borderRadius: 4, background: "#eee", margin: "18px 0 0", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: pct + "%", background: riskColor, borderRadius: 4, transition: "width 0.5s ease" }} />
+          {/* ── Risk score + Recommendation side by side ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+            {/* Risk score */}
+            <div style={{ ...card, marginBottom: 0, textAlign: "center", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: riskColor }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#a8a3c0", textTransform: "uppercase", letterSpacing: 1.2, marginTop: 8 }}>ML Risk Prediction</div>
+              <div style={{ fontSize: 56, fontWeight: 800, color: riskColor, margin: "8px 0 4px", letterSpacing: -2 }}>{pct}<span style={{ fontSize: 24, fontWeight: 600 }}>%</span></div>
+              <Badge color={riskColor} bg={riskColor + "15"}>{riskLevel} risk</Badge>
+              <div style={{ height: 6, borderRadius: 3, background: "#f0eff5", margin: "16px 0 0", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: pct + "%", background: `linear-gradient(90deg, ${riskColor}88, ${riskColor})`, borderRadius: 3, transition: "width 0.5s ease" }} />
+              </div>
+            </div>
+
+            {/* SENTRA recommendation */}
+            <div style={{ ...card, marginBottom: 0, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, background: recColor }} />
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#a8a3c0", textTransform: "uppercase", letterSpacing: 1.2, marginTop: 8 }}>SENTRA Recommendation</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: recColor, margin: "12px 0 8px", lineHeight: 1.2 }}>
+                {recToT.selected?.label || "Escalate to clinician"}
+              </div>
+              <div style={{ fontSize: 12, color: "#8884a8", lineHeight: 1.5, marginBottom: 12 }}>{recToT.selected?.rationale}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Badge color={recColor} bg={recColor + "15"}>{recToT.selected?.score || "escalate"}</Badge>
+                <Badge color={safety.passed ? "#10B981" : "#EF4444"} bg={safety.passed ? "#10B98115" : "#EF444415"}>
+                  Safety: {safety.gate}
+                </Badge>
+              </div>
             </div>
           </div>
 
-          {/* ═══ Fairness Agent warnings (Addition #5) ═══ */}
-          {fairness.warnings.length > 0 && fairness.warnings.map((w, i) => (
-            <div key={i} style={s.note("#fff8f0", "#D4A017")}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ padding: "2px 8px", borderRadius: 6, background: "#D4A01720", color: "#D4A017", fontSize: 10, fontWeight: 700 }}>FAIRNESS AGENT</span>
+          {/* Fairness warnings */}
+          {fairness.warnings.map((w, i) => (
+            <div key={i} style={callout("#FFFBEB", "#F59E0B")}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <Badge color="#92400E" bg="#FDE68A">FAIRNESS AGENT</Badge>
               </div>
               {w.text}
             </div>
           ))}
 
-          {/* ═══ Safety Auditor gate (Addition #5) ═══ */}
-          <div style={{
-            ...s.card,
-            borderColor: safety.passed ? "#1D9E7540" : "#D9404040",
-            background: safety.passed ? "#f0fff505" : "#fff0f008",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: safety.violations.length > 0 ? 12 : 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 0.5 }}>Safety Auditor</span>
-              </div>
-              <span style={{
-                padding: "4px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600,
-                background: safety.passed ? "#1D9E75" : "#D94040", color: "#fff",
-              }}>
-                {safety.gate}
-              </span>
+          {/* Safety violations */}
+          {safety.violations.length > 0 && safety.violations.map((v, i) => (
+            <div key={i} style={callout(v.severity === "block" ? "#FEF2F2" : "#FFFBEB", v.severity === "block" ? "#EF4444" : "#F59E0B")}>
+              <Badge color={v.severity === "block" ? "#991B1B" : "#92400E"} bg={v.severity === "block" ? "#FECACA" : "#FDE68A"}>
+                SAFETY: {v.rule}
+              </Badge>
+              <div style={{ marginTop: 6 }}>{v.detail}</div>
             </div>
-            {safety.violations.map((v, i) => (
-              <div key={i} style={{
-                padding: "10px 14px", borderRadius: 8, marginBottom: 6,
-                background: v.severity === "block" ? "#D9404010" : "#D4A01710",
-                borderLeft: `3px solid ${v.severity === "block" ? "#D94040" : "#D4A017"}`,
-              }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: v.severity === "block" ? "#D94040" : "#D4A017" }}>{v.rule}:</span>{" "}
-                <span style={{ fontSize: 12, color: "#555" }}>{v.detail}</span>
-              </div>
-            ))}
+          ))}
+
+          {/* ToT branches */}
+          <div style={card}>
+            <div style={sectionTitle}>Tree-of-Thought reasoning</div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {recToT.branches.map((b, i) => {
+                const isSelected = recToT.selected?.action === b.action;
+                const col = b.pruned ? "#aaa" : isSelected ? recColor : "#8884a8";
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 14, padding: "14px 18px",
+                    background: b.pruned ? "#fafafa" : isSelected ? col + "06" : "#faf9ff",
+                    borderRadius: 14, border: `1px solid ${b.pruned ? "#eee" : isSelected ? col + "40" : "#eeedf5"}`,
+                    opacity: b.pruned ? 0.4 : 1, transition: "all 0.2s",
+                  }}>
+                    <div style={{ width: 50, textAlign: "center", flexShrink: 0 }}>
+                      <Badge color={b.pruned ? "#fff" : "#fff"} bg={b.pruned ? "#ccc" : b.score === "sure" ? "#10B981" : b.score === "likely" ? "#6C63FF" : "#F59E0B"}>
+                        {b.pruned ? "✕" : b.score}
+                      </Badge>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: isSelected ? 700 : 500, color: "#1a1730" }}>
+                        {b.label}
+                        {isSelected && <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: recColor }}>← SELECTED</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#a8a3c0", marginTop: 2 }}>{b.rationale}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-          {/* ═══ Recommendation ToT output (Addition #1) ═══ */}
-          <div style={{ ...s.card, borderColor: recColor + "40" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>SENTRA Recommendation</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: recColor }}>{recToT.selected?.label || "Escalate to clinician"}</div>
-              </div>
-              <div style={{ padding: "6px 14px", borderRadius: 10, background: recColor + "12", color: recColor, fontSize: 12, fontWeight: 600 }}>
-                [{recToT.selected?.score || "escalate"}]
-              </div>
-            </div>
-            <div style={{ fontSize: 13, color: "#666", marginBottom: 14, lineHeight: 1.6 }}>
-              {recToT.selected?.rationale}
-            </div>
-
-            {/* ToT branches */}
-            <div style={{ fontSize: 11, color: "#aaa", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>Tree-of-Thought branches</div>
-            {recToT.branches.map((b, i) => (
-              <div key={i} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
-                background: b.pruned ? "#fafafa" : (recToT.selected?.action === b.action ? recColor + "08" : "#fff"),
-                borderRadius: 8, border: `1px solid ${b.pruned ? "#eee" : (recToT.selected?.action === b.action ? recColor + "40" : "#f0f0f0")}`,
-                marginBottom: 6, opacity: b.pruned ? 0.45 : 1,
-              }}>
-                <span style={{
-                  width: 55, textAlign: "center", fontSize: 10, fontWeight: 600, flexShrink: 0,
-                  color: b.pruned ? "#D94040" : b.score === "sure" ? "#1D9E75" : b.score === "likely" ? "#534AB7" : "#D4A017"
-                }}>
-                  {b.pruned ? "PRUNED" : `[${b.score}]`}
-                </span>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: 12, fontWeight: recToT.selected?.action === b.action ? 600 : 400 }}>
-                    {b.label}
-                    {recToT.selected?.action === b.action && <span style={{ fontSize: 9, background: recColor, color: "#fff", padding: "2px 6px", borderRadius: 8, marginLeft: 6 }}>SELECTED</span>}
-                  </span>
-                  <div style={{ fontSize: 11, color: "#999", marginTop: 1 }}>{b.rationale}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* ═══ SHAP contributions with provenance (Additions #2 & #3) ═══ */}
-          <div style={s.card}>
-            <div style={s.h2}>SHAP contributions</div>
-            <p style={{ ...s.muted, marginBottom: 12 }}>How each feature pushes this patient's prediction toward or away from stroke</p>
+          {/* SHAP contributions */}
+          <div style={card}>
+            <div style={sectionTitle}>SHAP contributions</div>
+            <p style={{ ...subtext, marginBottom: 16 }}>How each feature pushes this patient's prediction toward or away from stroke</p>
             {sortedC.map(([k, v]) => (
-              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7, fontSize: 13 }}>
-                <span style={{ width: 130, textAlign: "right", color: "#888", flexShrink: 0 }}>{k.replace(/_/g, " ")}</span>
-                <div style={{ flex: 1 }}><HBar value={v} max={maxC} color={v > 0 ? "#D94040" : "#1D9E75"} /></div>
-                <span style={{ width: 55, textAlign: "right", fontSize: 12, color: v > 0 ? "#D94040" : "#1D9E75", fontWeight: 500, flexShrink: 0 }}>
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{ width: 120, textAlign: "right", fontSize: 12, fontWeight: 600, color: "#a8a3c0", flexShrink: 0 }}>{k.replace(/_/g, " ")}</span>
+                <div style={{ flex: 1 }}><HBar value={v} max={maxC} color={v > 0 ? "#EF4444" : "#10B981"} height={12} /></div>
+                <span style={{ width: 55, textAlign: "right", fontSize: 12, fontWeight: 700, color: v > 0 ? "#EF4444" : "#10B981", flexShrink: 0, fontFamily: "monospace" }}>
                   {v > 0 ? "+" : ""}{v.toFixed(3)}
                 </span>
               </div>
             ))}
-            <div style={{ ...s.muted, marginTop: 10 }}>
-              Red = increases risk · Green = decreases risk
+            <div style={{ marginTop: 14, display: "flex", gap: 16, fontSize: 11, color: "#a8a3c0" }}>
+              <span><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: "#EF4444", marginRight: 4, verticalAlign: "middle" }} /> Increases risk</span>
+              <span><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: "#10B981", marginRight: 4, verticalAlign: "middle" }} /> Decreases risk</span>
+              <span style={{ marginLeft: "auto", fontFamily: "monospace", fontSize: 10 }}>Source: SHAP.LinearExplainer</span>
             </div>
           </div>
 
-          {/* ═══ Provenance trail (Addition #3) ═══ */}
-          <div style={s.card}>
-            <div style={s.h2}>Provenance trail</div>
-            <p style={{ ...s.muted, marginBottom: 12 }}>Every claim traced to its source — SHAP value + guideline + agent</p>
-            {[
-              { claim: `Risk score: ${pct}%`, source: "SHAP LinearExplainer → LogisticRegression", type: "ml_score" },
-              { claim: `Top factor: age (SHAP = ${contributions.age?.toFixed(3)})`, source: "deterministic: SHAP.LinearExplainer", type: "shap" },
-              { claim: `Fairness: ${fairness.subgroup} subgroup`, source: "FairnessAgent: subgroup recall analysis", type: "fairness" },
-              { claim: `Recommendation: ${recToT.selected?.label || "Escalate"}`, source: "ProtocolAdvisor: Tree-of-Thought search", type: "tot" },
-              { claim: `Safety gate: ${safety.gate}`, source: "SafetyAuditor: rule-based validation", type: "safety" },
-              { claim: "Clinical protocol reference", source: "AHA/ASA Guidelines for Early Management of Acute Ischemic Stroke (2019)", type: "guideline" },
-            ].map((p, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 12, padding: "6px 10px", background: "#faf9ff", borderRadius: 8 }}>
-                <span style={{ padding: "2px 7px", borderRadius: 5, background: "#f0eeff", color: "#534AB7", fontSize: 10, fontWeight: 600, flexShrink: 0, height: "fit-content" }}>{p.type}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: "#2d2a4a", fontWeight: 500 }}>{p.claim}</div>
-                  <div style={{ color: "#999", fontFamily: "monospace", fontSize: 11 }}>{p.source}</div>
+          {/* Provenance */}
+          <div style={card}>
+            <div style={sectionTitle}>Provenance trail</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {[
+                { claim: `Risk score: ${pct}%`, source: "SHAP LinearExplainer → LogisticRegression", type: "ml_score" },
+                { claim: `Top factor: age (${contributions.age?.toFixed(3)})`, source: "deterministic: SHAP.LinearExplainer", type: "shap" },
+                { claim: `Subgroup: ${fairness.subgroup}`, source: "FairnessAgent: subgroup recall analysis", type: "fairness" },
+                { claim: `Rec: ${recToT.selected?.label || "Escalate"}`, source: "ProtocolAdvisor: Tree-of-Thought", type: "tot" },
+                { claim: `Safety: ${safety.gate}`, source: "SafetyAuditor: rule-based validation", type: "safety" },
+                { claim: "Protocol reference", source: "AHA/ASA Stroke Guidelines (2019)", type: "guideline" },
+              ].map((p, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, padding: "10px 14px", background: "#faf9ff", borderRadius: 12, alignItems: "center" }}>
+                  <Badge color="#6C63FF" bg="#6C63FF12">{p.type}</Badge>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1730" }}>{p.claim}</span>
+                    <span style={{ fontSize: 11, color: "#b0abca", fontFamily: "monospace", marginLeft: 8 }}>{p.source}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
-          {/* ═══ Structured execution trace (Addition #2) — collapsible ═══ */}
-          <div style={s.card}>
+          {/* Execution trace (collapsible) */}
+          <div style={card}>
             <button onClick={() => setShowTrace(!showTrace)} style={{
-              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-              display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", padding: 0,
+              background: "none", border: "none", cursor: "pointer", fontFamily: font, width: "100%", padding: 0,
+              display: "flex", justifyContent: "space-between", alignItems: "center",
             }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#2d2a4a" }}>Execution trace</span>
-              <span style={{ color: "#534AB7", fontSize: 18, fontWeight: 300 }}>{showTrace ? "−" : "+"}</span>
+              <span style={{ ...sectionTitle, marginBottom: 0 }}>Execution trace</span>
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: "#f0eff5", display: "flex", alignItems: "center", justifyContent: "center", color: "#6C63FF", fontSize: 16, fontWeight: 300 }}>{showTrace ? "−" : "+"}</span>
             </button>
             {showTrace && (
-              <div style={{ marginTop: 14 }}>
+              <div style={{ marginTop: 16, display: "grid", gap: 6 }}>
                 {[
-                  { agent: "SignalMonitor", color: "#1D9E75", action: "screen_vitals", output: `risk=${pct}%`, decision: signal.escalate ? "escalate=true" : "STOP (Tier-1)", next: signal.escalate ? "RiskAssessor" : "END" },
+                  { agent: "SignalMonitor", color: "#10B981", action: "screen_vitals", output: `risk=${pct}%`, decision: signal.escalate ? "escalate" : "STOP", next: signal.escalate ? "RiskAssessor" : "END" },
                   ...(signal.escalate ? [
-                    { agent: "RiskAssessor", color: "#534AB7", action: "compute_shap", output: `age=${contributions.age?.toFixed(3)}, gluc=${contributions.avg_glucose_level?.toFixed(3)}`, decision: `level=${riskLevel}`, next: "FairnessAgent" },
-                    { agent: "FairnessAgent", color: "#D4A017", action: "check_subgroups", output: `warnings=${fairness.warnings.length}, flags=[${fairness.flags.join(",")}]`, decision: fairness.warnings.length > 0 ? "WARNINGS" : "OK", next: "ProtocolAdvisor" },
-                    { agent: "ProtocolAdvisor", color: "#534AB7", action: "recommendation_tot", output: `selected=${recToT.selected?.label}`, decision: recToT.selected?.action, next: "SafetyAuditor" },
-                    { agent: "SafetyAuditor", color: "#D94040", action: "validate", output: `violations=${safety.violations.length}`, decision: safety.gate, next: "EscalationCoord" },
-                    { agent: "EscalationCoord", color: "#888", action: "route", output: `urgency=${riskLevel.toLowerCase()}`, decision: "PENDING clinician sign-off", next: "END" },
+                    { agent: "RiskAssessor", color: "#6C63FF", action: "compute_shap", output: `age=${contributions.age?.toFixed(3)}`, decision: riskLevel, next: "FairnessAgent" },
+                    { agent: "FairnessAgent", color: "#F59E0B", action: "check_subgroups", output: `flags=[${fairness.flags.join(",")}]`, decision: fairness.warnings.length > 0 ? "WARN" : "OK", next: "ProtocolAdvisor" },
+                    { agent: "ProtocolAdvisor", color: "#6C63FF", action: "rec_tot", output: recToT.selected?.label, decision: recToT.selected?.action, next: "SafetyAuditor" },
+                    { agent: "SafetyAuditor", color: "#EF4444", action: "validate", output: `violations=${safety.violations.length}`, decision: safety.gate, next: "Escalation" },
+                    { agent: "Escalation", color: "#8884a8", action: "route", output: riskLevel.toLowerCase(), decision: "PENDING", next: "END" },
                   ] : []),
                 ].map((step, i) => (
-                  <div key={i} style={{ padding: "8px 12px", background: "#faf9ff", borderRadius: 8, borderLeft: `3px solid ${step.color}`, marginBottom: 6, fontSize: 12, lineHeight: 1.7, color: "#555" }}>
-                    <span style={{ fontWeight: 600, color: step.color }}>{step.agent}</span>
-                    {" → "}<span style={{ color: "#888" }}>Action:</span> {step.action}
-                    {" · "}<span style={{ color: "#888" }}>Output:</span> {step.output}
-                    {" · "}<span style={{ color: "#888" }}>Decision:</span> <strong>{step.decision}</strong>
-                    {" · "}<span style={{ color: "#888" }}>Next:</span> {step.next}
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "#faf9ff", borderRadius: 10, borderLeft: `3px solid ${step.color}`, fontSize: 12, color: "#666" }}>
+                    <span style={{ fontWeight: 700, color: step.color, width: 100, flexShrink: 0 }}>{step.agent}</span>
+                    <span style={{ color: "#b0abca" }}>{step.action}</span>
+                    <span style={{ color: "#b0abca" }}>→</span>
+                    <span style={{ fontFamily: "monospace", fontSize: 11 }}>{step.output}</span>
+                    <span style={{ color: "#b0abca" }}>→</span>
+                    <span style={{ fontWeight: 600, color: "#1a1730" }}>{step.decision}</span>
+                    <span style={{ marginLeft: "auto", color: "#ccc", fontSize: 11 }}>→ {step.next}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          <div style={s.note("#f0f4ff", "#534AB7")}>
+          <div style={callout("#EFF6FF", "#6C63FF")}>
             <strong>Clinical note:</strong> SENTRA's recommendation requires clinician sign-off before action. The ML model is optimized for screening sensitivity (recall = 80%). This is not a diagnostic instrument.
           </div>
         </>
       )}
 
-      {/* ─── TAB 1: Models + Calibration ─── */}
+      {/* ═══════════════════════ */}
+      {/* TAB 1: MODELS          */}
+      {/* ═══════════════════════ */}
       {tab === 1 && (
         <>
-          <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-            <Metric label="Best model" value="Logistic Reg." sub="Balanced class weights" />
-            <Metric label="AUC-ROC" value="0.838" sub="Area under ROC curve" />
-            <Metric label="Recall" value="80.0%" sub="Sensitivity" />
-            <Metric label="Patients" value="5,110" sub="Training dataset" />
+          <div style={{ display: "flex", gap: 14, marginBottom: 24, flexWrap: "wrap" }}>
+            <StatCard label="Best model" value="Logistic Reg." sub="Balanced weights" accent="#6C63FF" />
+            <StatCard label="AUC-ROC" value="0.838" sub="Discrimination" accent="#6C63FF" />
+            <StatCard label="Recall" value="80.0%" sub="Sensitivity" accent="#10B981" />
+            <StatCard label="Patients" value="5,110" sub="Dataset size" accent="#F59E0B" />
           </div>
 
-          <div style={s.card}>
-            <div style={s.h2}>Model performance comparison</div>
+          <div style={card}>
+            <div style={sectionTitle}>Model comparison</div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: "2px solid #eee" }}>
-                    {["Model", "AUC", "Recall", "Precision", "F1", "Brier"].map(h => (
-                      <th key={h} style={{ padding: "8px 10px", textAlign: h === "Model" ? "left" : "center", color: "#888", fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 }}>{h}</th>
-                    ))}
-                  </tr>
+                  <tr>{["Model", "AUC", "Recall", "Precision", "F1", "Brier"].map(h => (
+                    <th key={h} style={{ padding: "12px 10px", textAlign: h === "Model" ? "left" : "center", color: "#a8a3c0", fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, borderBottom: "2px solid #f0eff5" }}>{h}</th>
+                  ))}</tr>
                 </thead>
                 <tbody>
                   {MODELS.map(m => (
-                    <tr key={m.name} style={{ borderBottom: "1px solid #f0f0f0", background: m.best ? "#f8f7ff" : "transparent" }}>
-                      <td style={{ padding: 10, fontWeight: m.best ? 600 : 400, color: m.best ? "#534AB7" : "#2d2a4a" }}>
-                        {m.name}{m.best && <span style={{ fontSize: 10, background: "#534AB7", color: "#fff", padding: "2px 8px", borderRadius: 10, marginLeft: 6, verticalAlign: "middle" }}>BEST</span>}
+                    <tr key={m.name} style={{ borderBottom: "1px solid #f8f7fc" }}>
+                      <td style={{ padding: "14px 10px", fontWeight: m.best ? 700 : 500, color: m.best ? "#6C63FF" : "#1a1730" }}>
+                        {m.name}{m.best && <Badge color="#fff" bg="#6C63FF"> BEST</Badge>}
                       </td>
-                      <td style={{ textAlign: "center", padding: 10 }}>{m.auc.toFixed(3)}</td>
+                      <td style={{ textAlign: "center", padding: 10, fontFamily: "monospace" }}>{m.auc.toFixed(3)}</td>
                       <td style={{ textAlign: "center", padding: 10 }}>
-                        <span style={{ color: m.recall >= 0.7 ? "#1D9E75" : m.recall >= 0.5 ? "#D4A017" : "#D94040", fontWeight: 500 }}>{(m.recall * 100).toFixed(1)}%</span>
+                        <span style={{ color: m.recall >= 0.7 ? "#10B981" : m.recall >= 0.5 ? "#F59E0B" : "#EF4444", fontWeight: 700 }}>{(m.recall * 100).toFixed(1)}%</span>
                       </td>
-                      <td style={{ textAlign: "center", padding: 10 }}>{(m.precision * 100).toFixed(1)}%</td>
-                      <td style={{ textAlign: "center", padding: 10 }}>{m.f1.toFixed(3)}</td>
-                      <td style={{ textAlign: "center", padding: 10, color: m.brier < 0.1 ? "#1D9E75" : "#D4A017" }}>{m.brier.toFixed(3)}</td>
+                      <td style={{ textAlign: "center", padding: 10, fontFamily: "monospace" }}>{(m.precision * 100).toFixed(1)}%</td>
+                      <td style={{ textAlign: "center", padding: 10, fontFamily: "monospace" }}>{m.f1.toFixed(3)}</td>
+                      <td style={{ textAlign: "center", padding: 10, fontFamily: "monospace", color: m.brier < 0.1 ? "#10B981" : "#F59E0B" }}>{m.brier.toFixed(3)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -528,142 +486,116 @@ export default function App() {
             </div>
           </div>
 
-          {/* ═══ Calibration metrics (Addition #4) ═══ */}
-          <div style={s.card}>
-            <div style={s.h2}>Calibration analysis</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>When the model says 70% risk, do ~70% of those patients actually have strokes?</p>
-            <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-              <Metric label="Brier Score" value={CALIBRATION_DATA.brier.toFixed(3)} sub="Lower = better (0 = perfect)" />
-              <Metric label="ECE" value={CALIBRATION_DATA.ece.toFixed(3)} sub="Expected Calibration Error" />
-              <Metric label="Max CE" value={CALIBRATION_DATA.maxCE.toFixed(3)} sub="Worst single-bin gap" />
+          {/* Calibration */}
+          <div style={card}>
+            <div style={sectionTitle}>Calibration analysis</div>
+            <p style={{ ...subtext, marginBottom: 18 }}>When the model says 70% risk, do ~70% of those patients actually have strokes?</p>
+            <div style={{ display: "flex", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
+              <StatCard label="Brier Score" value={CALIBRATION_DATA.brier.toFixed(3)} sub="Lower = better" accent="#6C63FF" />
+              <StatCard label="ECE" value={CALIBRATION_DATA.ece.toFixed(3)} sub="Calibration error" accent="#F59E0B" />
+              <StatCard label="Max CE" value={CALIBRATION_DATA.maxCE.toFixed(3)} sub="Worst bin gap" accent="#EF4444" />
             </div>
-
-            <div style={s.h3}>Reliability diagram</div>
-            <div style={{ display: "flex", gap: 12, marginBottom: 8, fontSize: 10, color: "#888" }}>
-              <span style={{ width: 40, textAlign: "right" }}>Pred.</span>
-              <span style={{ flex: 1, textAlign: "center" }}>
-                <span style={{ display: "inline-block", width: 10, height: 10, background: "#e0def5", borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} /> Predicted
-                <span style={{ display: "inline-block", width: 10, height: 10, background: "#534AB7", borderRadius: 2, marginLeft: 10, marginRight: 4, verticalAlign: "middle" }} /> Actual
-              </span>
-              <span style={{ width: 40, textAlign: "right" }}>Actual</span>
-              <span style={{ width: 30, textAlign: "right" }}>Gap</span>
-              <span style={{ width: 35 }}></span>
-            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#a8a3c0", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Reliability diagram</div>
             {CALIBRATION_DATA.bins.map((bin, i) => {
               const gap = Math.abs(bin.actual - bin.predicted);
-              const gc = gap < 0.05 ? "#1D9E75" : gap < 0.10 ? "#D4A017" : "#D94040";
+              const gc = gap < 0.05 ? "#10B981" : gap < 0.10 ? "#F59E0B" : "#EF4444";
               return (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, fontSize: 12 }}>
-                  <span style={{ width: 40, textAlign: "right", color: "#888" }}>{bin.predicted.toFixed(2)}</span>
-                  <div style={{ flex: 1, position: "relative", height: 20 }}>
-                    <div style={{ position: "absolute", width: `${bin.predicted * 100}%`, height: "100%", background: "#e0def5", borderRadius: 3, opacity: 0.5 }} />
-                    <div style={{ position: "absolute", width: `${bin.actual * 100}%`, height: "100%", background: "#534AB7", borderRadius: 3, opacity: 0.8 }} />
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5, fontSize: 12 }}>
+                  <span style={{ width: 36, textAlign: "right", color: "#a8a3c0", fontFamily: "monospace", fontSize: 11 }}>{bin.predicted.toFixed(2)}</span>
+                  <div style={{ flex: 1, position: "relative", height: 16, borderRadius: 4, overflow: "hidden", background: "#f0eff5" }}>
+                    <div style={{ position: "absolute", width: `${bin.predicted * 100}%`, height: "100%", background: "#ddd8f5", borderRadius: 4 }} />
+                    <div style={{ position: "absolute", width: `${bin.actual * 100}%`, height: "100%", background: "#6C63FF", borderRadius: 4, opacity: 0.85 }} />
                   </div>
-                  <span style={{ width: 40, textAlign: "right", color: "#666" }}>{bin.actual.toFixed(2)}</span>
-                  <span style={{ width: 30, textAlign: "right", color: gc, fontWeight: 500, fontSize: 11 }}>{gap.toFixed(2)}</span>
-                  <span style={{ width: 35, textAlign: "right", color: "#bbb", fontSize: 11 }}>n={bin.count}</span>
+                  <span style={{ width: 36, textAlign: "right", fontFamily: "monospace", fontSize: 11, color: "#666" }}>{bin.actual.toFixed(2)}</span>
+                  <span style={{ width: 28, textAlign: "right", fontWeight: 700, color: gc, fontSize: 11 }}>{gap.toFixed(2)}</span>
+                  <span style={{ width: 42, textAlign: "right", color: "#ccc", fontSize: 10 }}>n={bin.count}</span>
                 </div>
               );
             })}
-            <div style={{ ...s.muted, marginTop: 12 }}>
-              ECE of 0.067 indicates good calibration — predicted probabilities roughly match observed stroke rates. Gap increases at higher predicted probabilities where fewer training samples exist.
-            </div>
           </div>
 
-          {/* ═══ Fairness subgroup analysis (Addition #5) ═══ */}
-          <div style={s.card}>
-            <div style={s.h2}>Fairness: subgroup performance</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>Model recall and AUC across demographic subgroups — identifies blind spots</p>
-
-            <div style={s.h3}>By age group</div>
-            <div style={{ overflowX: "auto", marginBottom: 16 }}>
+          {/* Fairness */}
+          <div style={card}>
+            <div style={sectionTitle}>Fairness: subgroup performance</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#a8a3c0", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>By age group</div>
+            <div style={{ overflowX: "auto", marginBottom: 20 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "2px solid #eee" }}>
-                    {["Age group", "Recall", "AUC", "N", "Flag"].map(h => (
-                      <th key={h} style={{ padding: "8px 10px", textAlign: "center", color: "#888", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                    ))}
+                <thead><tr>{["Age group", "Recall", "AUC", "N", ""].map(h => (
+                  <th key={h} style={{ padding: "10px 10px", textAlign: "center", color: "#a8a3c0", fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, borderBottom: "2px solid #f0eff5" }}>{h}</th>
+                ))}</tr></thead>
+                <tbody>{FAIRNESS_DATA.ageGroups.map(g => (
+                  <tr key={g.group} style={{ borderBottom: "1px solid #f8f7fc", background: g.flag ? "#FFFBEB" : "transparent" }}>
+                    <td style={{ padding: "12px 10px", fontWeight: 600 }}>{g.group}</td>
+                    <td style={{ textAlign: "center", fontWeight: 700, color: g.recall === 0 ? "#EF4444" : g.recall < 0.5 ? "#F59E0B" : "#10B981" }}>{(g.recall * 100).toFixed(1)}%</td>
+                    <td style={{ textAlign: "center", fontFamily: "monospace" }}>{g.auc.toFixed(2)}</td>
+                    <td style={{ textAlign: "center", color: "#a8a3c0" }}>{g.n.toLocaleString()}</td>
+                    <td style={{ textAlign: "center" }}>{g.flag && <Badge color="#991B1B" bg="#FECACA">BLIND SPOT</Badge>}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {FAIRNESS_DATA.ageGroups.map(g => (
-                    <tr key={g.group} style={{ borderBottom: "1px solid #f0f0f0", background: g.flag ? "#fff8f0" : "transparent" }}>
-                      <td style={{ padding: 10, fontWeight: 500 }}>{g.group}</td>
-                      <td style={{ textAlign: "center", padding: 10, color: g.recall === 0 ? "#D94040" : g.recall < 0.5 ? "#D4A017" : "#1D9E75", fontWeight: 600 }}>{(g.recall * 100).toFixed(1)}%</td>
-                      <td style={{ textAlign: "center", padding: 10 }}>{g.auc.toFixed(2)}</td>
-                      <td style={{ textAlign: "center", padding: 10, color: "#888" }}>{g.n.toLocaleString()}</td>
-                      <td style={{ textAlign: "center", padding: 10 }}>
-                        {g.flag && <span style={{ padding: "2px 10px", borderRadius: 10, background: "#D9404015", color: "#D94040", fontSize: 11, fontWeight: 500 }}>BLIND SPOT</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+                ))}</tbody>
               </table>
             </div>
-
-            <div style={s.h3}>By gender</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#a8a3c0", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>By gender</div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "2px solid #eee" }}>
-                    {["Gender", "Recall", "AUC", "N"].map(h => (
-                      <th key={h} style={{ padding: "8px 10px", textAlign: "center", color: "#888", fontWeight: 500, fontSize: 11, textTransform: "uppercase" }}>{h}</th>
-                    ))}
+                <thead><tr>{["Gender", "Recall", "AUC", "N"].map(h => (
+                  <th key={h} style={{ padding: "10px 10px", textAlign: "center", color: "#a8a3c0", fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 1, borderBottom: "2px solid #f0eff5" }}>{h}</th>
+                ))}</tr></thead>
+                <tbody>{FAIRNESS_DATA.genderGroups.map(g => (
+                  <tr key={g.group} style={{ borderBottom: "1px solid #f8f7fc" }}>
+                    <td style={{ padding: "12px 10px", fontWeight: 600 }}>{g.group}</td>
+                    <td style={{ textAlign: "center", fontWeight: 700, color: "#10B981" }}>{(g.recall * 100).toFixed(1)}%</td>
+                    <td style={{ textAlign: "center", fontFamily: "monospace" }}>{g.auc.toFixed(2)}</td>
+                    <td style={{ textAlign: "center", color: "#a8a3c0" }}>{g.n.toLocaleString()}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {FAIRNESS_DATA.genderGroups.map(g => (
-                    <tr key={g.group} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                      <td style={{ padding: 10, fontWeight: 500 }}>{g.group}</td>
-                      <td style={{ textAlign: "center", padding: 10, color: "#1D9E75", fontWeight: 500 }}>{(g.recall * 100).toFixed(1)}%</td>
-                      <td style={{ textAlign: "center", padding: 10 }}>{g.auc.toFixed(2)}</td>
-                      <td style={{ textAlign: "center", padding: 10, color: "#888" }}>{g.n.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
+                ))}</tbody>
               </table>
             </div>
           </div>
 
-          <div style={s.note("#fff0f0", "#D94040")}>
-            <strong>Critical finding:</strong> 0% recall for patients under 55 — the model misses every stroke in younger patients. Age (SHAP = 1.713) dominates so heavily that younger patients never reach the prediction threshold. The Fairness Agent flags this, and the Safety Auditor ensures clinical judgment overrides the ML for this subgroup.
-          </div>
-          <div style={s.note("#fff8f0", "#D4A017")}>
-            <strong>Why recall matters most:</strong> In stroke screening, a false negative (missing a stroke patient) is far more dangerous than a false positive. A naive "predict no stroke" model gets 95.1% accuracy but 0% recall — clinically useless.
+          <div style={callout("#FEF2F2", "#EF4444")}>
+            <strong>Critical finding:</strong> 0% recall for patients under 55 — the model misses every stroke in younger patients. The Fairness Agent flags this and the Safety Auditor ensures clinical judgment overrides the ML for this subgroup.
           </div>
         </>
       )}
 
-      {/* ─── TAB 2: Risk Factors ─── */}
+      {/* ═══════════════════════ */}
+      {/* TAB 2: RISK FACTORS     */}
+      {/* ═══════════════════════ */}
       {tab === 2 && (
         <>
-          <div style={s.card}>
-            <div style={s.h2}>Global SHAP feature importance</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>Mean |SHAP value| — how much each feature influences predictions across all patients</p>
+          <div style={card}>
+            <div style={sectionTitle}>Global SHAP feature importance</div>
+            <p style={{ ...subtext, marginBottom: 18 }}>Mean |SHAP value| — how much each feature influences predictions across all patients</p>
             {globalSorted.map(([k, v]) => (
-              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 13 }}>
-                <span style={{ width: 130, textAlign: "right", color: "#888", flexShrink: 0 }}>{k.replace(/_/g, " ")}</span>
-                <div style={{ flex: 1 }}><HBar value={v} max={maxG} color="#7F77DD" /></div>
-                <span style={{ width: 50, textAlign: "right", fontSize: 12, color: "#666", flexShrink: 0 }}>{v.toFixed(3)}</span>
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{ width: 120, textAlign: "right", fontSize: 12, fontWeight: 600, color: "#a8a3c0", flexShrink: 0 }}>{k.replace(/_/g, " ")}</span>
+                <div style={{ flex: 1 }}><HBar value={v} max={maxG} color="#6C63FF" height={14} /></div>
+                <span style={{ width: 50, textAlign: "right", fontSize: 12, fontWeight: 700, color: "#1a1730", fontFamily: "monospace", flexShrink: 0 }}>{v.toFixed(3)}</span>
               </div>
             ))}
           </div>
 
-          <div style={s.card}>
-            <div style={s.h2}>Neuroscience interpretation</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>How each risk factor relates to cerebrovascular pathophysiology</p>
+          <div style={card}>
+            <div style={sectionTitle}>Neuroscience interpretation</div>
             {NEURO_FACTORS.map((rf, i) => (
               <div key={i} style={{ marginBottom: 8 }}>
                 <button onClick={() => setExpandedFactor(expandedFactor === i ? null : i)} style={{
-                  width: "100%", textAlign: "left", padding: "12px 16px", border: "1px solid " + (expandedFactor === i ? "#534AB7" : "#eee"),
-                  borderRadius: expandedFactor === i ? "10px 10px 0 0" : 10, background: expandedFactor === i ? "#f8f7ff" : "#fff",
-                  cursor: "pointer", fontFamily: "inherit", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center",
+                  width: "100%", textAlign: "left", padding: "14px 18px",
+                  border: `1px solid ${expandedFactor === i ? "#6C63FF30" : "#eeedf5"}`,
+                  borderRadius: expandedFactor === i ? "14px 14px 0 0" : 14,
+                  background: expandedFactor === i ? "#faf9ff" : "#fff",
+                  cursor: "pointer", fontFamily: font, fontSize: 14, display: "flex", justifyContent: "space-between", alignItems: "center",
                 }}>
-                  <span><span style={{ fontWeight: 600 }}>{rf.feature}</span><span style={{ color: "#999", marginLeft: 10, fontSize: 12 }}>SHAP: {rf.shap.toFixed(3)}</span></span>
-                  <span style={{ color: "#534AB7", fontSize: 18, fontWeight: 300 }}>{expandedFactor === i ? "−" : "+"}</span>
+                  <span>
+                    <span style={{ fontWeight: 700, color: "#1a1730" }}>{rf.feature}</span>
+                    <span style={{ color: "#b0abca", marginLeft: 12, fontSize: 12, fontFamily: "monospace" }}>SHAP: {rf.shap.toFixed(3)}</span>
+                  </span>
+                  <span style={{ width: 28, height: 28, borderRadius: 8, background: expandedFactor === i ? "#6C63FF15" : "#f0eff5", display: "flex", alignItems: "center", justifyContent: "center", color: "#6C63FF", fontSize: 16, fontWeight: 300 }}>
+                    {expandedFactor === i ? "−" : "+"}
+                  </span>
                 </button>
                 {expandedFactor === i && (
-                  <div style={{ padding: "14px 16px", fontSize: 13, lineHeight: 1.8, color: "#555", background: "#faf9ff", borderRadius: "0 0 10px 10px", border: "1px solid #534AB7", borderTop: "none" }}>
+                  <div style={{ padding: "16px 18px", fontSize: 13, lineHeight: 1.8, color: "#555", background: "#faf9ff", borderRadius: "0 0 14px 14px", border: "1px solid #6C63FF30", borderTop: "none" }}>
                     {rf.detail}
                   </div>
                 )}
@@ -673,134 +605,161 @@ export default function App() {
         </>
       )}
 
-      {/* ─── TAB 3: Methodology ─── */}
+      {/* ═══════════════════════ */}
+      {/* TAB 3: METHODOLOGY      */}
+      {/* ═══════════════════════ */}
       {tab === 3 && (
         <>
-          <div style={s.card}>
-            <div style={s.h2}>Machine learning pipeline</div>
-            <p style={{ ...s.muted, marginBottom: 18 }}>End-to-end workflow from raw patient data to explainable risk predictions</p>
+          <div style={card}>
+            <div style={sectionTitle}>ML pipeline</div>
             {METHODOLOGY_STEPS.map((step, i) => (
-              <div key={i} style={{ display: "flex", gap: 16, marginBottom: 18, alignItems: "flex-start" }}>
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#f0eeff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 600, color: "#534AB7", flexShrink: 0 }}>{i + 1}</div>
+              <div key={i} style={{ display: "flex", gap: 18, marginBottom: 22, alignItems: "flex-start" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: "linear-gradient(135deg, #6C63FF12, #6C63FF08)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+                  {step.icon}
+                </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{step.title}</div>
-                  <div style={{ fontSize: 13, color: "#666", lineHeight: 1.7 }}>{step.desc}</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1730", marginBottom: 4 }}>{step.title}</div>
+                  <div style={{ fontSize: 13, color: "#8884a8", lineHeight: 1.7 }}>{step.desc}</div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* SENTRA agent architecture */}
-          <div style={s.card}>
-            <div style={s.h2}>SENTRA agent architecture</div>
-            <p style={{ ...s.muted, marginBottom: 14 }}>6 specialized agents coordinated via LangGraph state machine</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", padding: "12px 0" }}>
+          {/* Agent architecture */}
+          <div style={card}>
+            <div style={sectionTitle}>SENTRA agent architecture</div>
+            <p style={{ ...subtext, marginBottom: 18 }}>6 agents coordinated via LangGraph state machine</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", padding: "8px 0" }}>
               {[
-                { name: "Signal Monitor", color: "#1D9E75", desc: "Data validation + Tier-1 gate" },
-                { name: "Risk Assessor", color: "#534AB7", desc: "ML + SHAP + differential" },
-                { name: "Fairness Agent", color: "#D4A017", desc: "Demographic blind spots" },
-                { name: "Protocol Advisor", color: "#534AB7", desc: "RAG + Rec. ToT" },
-                { name: "Safety Auditor", color: "#D94040", desc: "Final safety gate" },
-                { name: "Escalation Coord.", color: "#888", desc: "Route to clinician" },
-              ].map((agent, i, arr) => (
-                <React.Fragment key={agent.name}>
-                  <div style={{ padding: "10px 14px", background: agent.color + "10", border: `1px solid ${agent.color}40`, borderRadius: 10, textAlign: "center", minWidth: 95 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: agent.color }}>{agent.name}</div>
-                    <div style={{ fontSize: 10, color: "#888", marginTop: 2 }}>{agent.desc}</div>
+                { name: "Signal Monitor", color: "#10B981" },
+                { name: "Risk Assessor", color: "#6C63FF" },
+                { name: "Fairness Agent", color: "#F59E0B" },
+                { name: "Protocol Advisor", color: "#6C63FF" },
+                { name: "Safety Auditor", color: "#EF4444" },
+                { name: "Escalation", color: "#8884a8" },
+              ].map((a, i, arr) => (
+                <React.Fragment key={a.name}>
+                  <div style={{ padding: "12px 16px", background: a.color + "08", border: `1px solid ${a.color}25`, borderRadius: 14, textAlign: "center" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: a.color }}>{a.name}</div>
                   </div>
-                  {i < arr.length - 1 && <div style={{ display: "flex", alignItems: "center", color: "#ccc", fontSize: 18 }}>&#8594;</div>}
+                  {i < arr.length - 1 && <div style={{ display: "flex", alignItems: "center", color: "#ddd", fontSize: 16 }}>→</div>}
                 </React.Fragment>
               ))}
             </div>
           </div>
 
-          <div style={s.card}>
-            <div style={s.h2}>Key technical decisions</div>
-            <div style={{ display: "grid", gap: 12 }}>
+          <div style={card}>
+            <div style={sectionTitle}>Key decisions</div>
+            <div style={{ display: "grid", gap: 10 }}>
               {[
-                ["KNN imputation over mean/median", "Preserves relationships between BMI and other features. Mean imputation introduces bias by ignoring correlations."],
-                ["SMOTE on training set only", "Applying SMOTE before splitting leaks synthetic samples into the test set, producing overly optimistic metrics."],
-                ["Recall as primary metric", "Missing a stroke patient (false negative) is far more dangerous than an unnecessary follow-up (false positive)."],
-                ["SHAP over permutation importance", "Provides theoretically grounded, consistent attributions at both global and individual patient levels."],
-                ["Tree-of-Thought for recommendations", "ToT decides the action (routine vs expedited vs urgent) — a search problem with safety constraints. Prediction stays deterministic."],
-                ["Safety Auditor as final gate", "Blocks contraindicated actions and catches hallucinations before output reaches the clinician."],
-                ["Fairness Agent in parallel", "Checks known demographic blind spots (0% recall under 55) before recommendations are finalized."],
+                ["KNN imputation over mean/median", "Preserves feature relationships. Mean imputation introduces bias."],
+                ["SMOTE on training set only", "Prevents leaking synthetic samples into evaluation."],
+                ["Recall as primary metric", "Missing a stroke is far worse than a false alarm."],
+                ["SHAP over permutation importance", "Consistent individual + global explanations for clinical trust."],
+                ["Tree-of-Thought for recommendations", "Searches action space (routine/expedited/urgent) with safety constraints."],
+                ["Safety Auditor as final gate", "Blocks contraindicated actions and catches hallucinations."],
+                ["Fairness Agent in parallel", "Flags 0% recall under-55 blind spot before recommendations finalize."],
               ].map(([title, desc], i) => (
-                <div key={i} style={{ padding: "12px 16px", background: "#faf9ff", borderRadius: 10, borderLeft: "3px solid #534AB7" }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{title}</div>
-                  <div style={{ fontSize: 12, color: "#666", lineHeight: 1.6 }}>{desc}</div>
+                <div key={i} style={{ padding: "14px 18px", background: "#faf9ff", borderRadius: 14, borderLeft: "3px solid #6C63FF" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1730", marginBottom: 4 }}>{title}</div>
+                  <div style={{ fontSize: 13, color: "#8884a8", lineHeight: 1.5 }}>{desc}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div style={s.card}>
-            <div style={s.h2}>Tools and libraries</div>
+          <div style={card}>
+            <div style={sectionTitle}>Tools & libraries</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {["Python", "scikit-learn", "XGBoost", "SHAP", "imbalanced-learn (SMOTE)", "LangGraph", "LangChain", "FHIR R4", "Gradio", "pandas", "matplotlib", "React"].map(t => (
-                <span key={t} style={{ padding: "4px 12px", background: "#f0eeff", borderRadius: 20, fontSize: 12, color: "#534AB7", fontWeight: 500 }}>{t}</span>
+              {["Python", "scikit-learn", "XGBoost", "SHAP", "imbalanced-learn", "LangGraph", "LangChain", "FHIR R4", "Gradio", "pandas", "matplotlib", "React"].map(t => (
+                <span key={t} style={{ padding: "6px 14px", background: "#6C63FF08", border: "1px solid #6C63FF20", borderRadius: 10, fontSize: 12, color: "#6C63FF", fontWeight: 600 }}>{t}</span>
               ))}
             </div>
           </div>
         </>
       )}
 
-      {/* ─── TAB 4: About ─── */}
+      {/* ═══════════════════════ */}
+      {/* TAB 4: ABOUT            */}
+      {/* ═══════════════════════ */}
       {tab === 4 && (
         <>
-          <div style={s.card}>
-            <div style={s.h2}>About this project</div>
-            <p style={{ fontSize: 14, lineHeight: 1.8, color: "#555", marginBottom: 16 }}>
+          <div style={card}>
+            <div style={heading}>About SENTRA</div>
+            <p style={{ fontSize: 15, lineHeight: 1.8, color: "#555", marginBottom: 20, marginTop: 12 }}>
               SENTRA (Stroke Early-warning and Neuro Triage Response Agent) is a multi-agent clinical decision support system
               that combines machine learning prediction with SHAP explainability, fairness auditing, Tree-of-Thought recommendation
-              reasoning, and safety guardrails. It goes beyond simple risk prediction — it runs a full triage pipeline that
-              checks for demographic blind spots, reasons about the best clinical action, validates that recommendation
-              against safety rules, and provides full provenance traceability for every claim.
+              reasoning, and safety guardrails. It goes beyond risk prediction — running a full triage pipeline that
+              checks for demographic blind spots, reasons about the best clinical action, validates recommendations
+              against safety rules, and provides full provenance traceability.
             </p>
-            <div style={s.h3}>Key findings</div>
-            <ul style={{ fontSize: 13, color: "#666", lineHeight: 2, paddingLeft: 20, marginBottom: 16 }}>
-              <li>Logistic Regression with balanced weights: 80% recall, 0.838 AUC-ROC</li>
-              <li>Age is the dominant predictor (SHAP: 1.713) — consistent with cerebrovascular pathophysiology</li>
-              <li>Critical fairness finding: 0% recall for patients under 55</li>
-              <li>Calibration: Brier Score 0.146, ECE 0.067</li>
-              <li>Safety Auditor prevents contraindicated recommendations</li>
-            </ul>
 
-            <div style={s.h3}>Dataset</div>
-            <p style={{ fontSize: 13, color: "#666", lineHeight: 1.7, marginBottom: 16 }}>
+            <div style={sectionTitle}>Key findings</div>
+            <div style={{ display: "grid", gap: 8, marginBottom: 24 }}>
+              {[
+                "Logistic Regression with balanced weights: 80% recall, 0.838 AUC-ROC",
+                "Age is the dominant predictor (SHAP: 1.713) — consistent with cerebrovascular pathophysiology",
+                "Critical fairness finding: 0% recall for patients under 55",
+                "Calibration: Brier Score 0.146, ECE 0.067",
+                "Safety Auditor prevents contraindicated recommendations",
+              ].map((f, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14, color: "#555", lineHeight: 1.6 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#6C63FF", marginTop: 7, flexShrink: 0 }} />
+                  {f}
+                </div>
+              ))}
+            </div>
+
+            <div style={sectionTitle}>Dataset</div>
+            <p style={{ fontSize: 14, color: "#666", lineHeight: 1.7, marginBottom: 20 }}>
               Kaggle Stroke Prediction Dataset (McKinsey and Company) — 5,110 patients, 11 clinical features, 4.87% stroke-positive.
             </p>
 
-            <div style={s.h3}>Limitations</div>
-            <ul style={{ fontSize: 13, color: "#666", lineHeight: 2, paddingLeft: 20 }}>
-              <li>Cross-sectional dataset — no temporal/longitudinal modeling</li>
-              <li>Missing features: atrial fibrillation, cholesterol, family history, medications</li>
-              <li>SMOTE may introduce synthetic artifacts in minority class</li>
-              <li>Single-source data limits generalizability</li>
-            </ul>
+            <div style={sectionTitle}>Limitations</div>
+            <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+              {[
+                "Cross-sectional dataset — no temporal/longitudinal modeling",
+                "Missing features: atrial fibrillation, cholesterol, family history",
+                "SMOTE may introduce synthetic artifacts in minority class",
+                "Single-source data limits generalizability",
+              ].map((l, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14, color: "#888", lineHeight: 1.6 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#ddd", marginTop: 7, flexShrink: 0 }} />
+                  {l}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div style={s.card}>
-            <div style={s.h2}>Author</div>
-            <p style={{ fontSize: 14, color: "#666", lineHeight: 1.7 }}>
-              Jahnavi Nimmakayala — High school researcher with a focus on neuroscience and computational biology.
-            </p>
-            <div style={{ marginTop: 12 }}>
+          <div style={card}>
+            <div style={sectionTitle}>Author</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 16, background: "linear-gradient(135deg, #6C63FF, #534AB7)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 20, fontWeight: 700, flexShrink: 0 }}>J</div>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#1a1730" }}>Jahnavi Nimmakayala</div>
+                <div style={{ fontSize: 13, color: "#8884a8" }}>High school researcher — neuroscience & computational biology</div>
+              </div>
+            </div>
+            <div style={{ marginTop: 16 }}>
               <a href="https://github.com/jahnavin123/stroke-risk-predictor" target="_blank" rel="noreferrer"
-                style={{ padding: "6px 14px", background: "#2d2a4a", color: "#fff", borderRadius: 8, fontSize: 12, textDecoration: "none", fontWeight: 500 }}>
-                GitHub Repository
+                style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 20px", background: "#1a1730", color: "#fff", borderRadius: 12, fontSize: 13, textDecoration: "none", fontWeight: 600, fontFamily: font }}>
+                GitHub Repository →
               </a>
             </div>
           </div>
 
-          <div style={s.note("#fff0f0", "#D94040")}>
+          <div style={callout("#FEF2F2", "#EF4444")}>
             <strong>Disclaimer:</strong> This tool is for educational and research purposes only. It is not a medical device and should not be used for clinical decision-making without professional medical oversight.
           </div>
         </>
       )}
 
-      <footer style={{ textAlign: "center", padding: "28px 0 12px", fontSize: 11, color: "#ccc" }}>
-        SENTRA — Built with scikit-learn, SHAP, LangGraph, React — BioAI Lab — For research purposes only
+      {/* ═══ Footer ═══ */}
+      <footer style={{ textAlign: "center", padding: "32px 0 16px" }}>
+        <div style={{ width: 40, height: 3, borderRadius: 2, background: "#eeedf5", margin: "0 auto 16px" }} />
+        <div style={{ fontSize: 11, color: "#ccc", letterSpacing: 0.5 }}>
+          SENTRA · scikit-learn · SHAP · LangGraph · React · BioAI Lab · Research purposes only
+        </div>
       </footer>
     </div>
   );
