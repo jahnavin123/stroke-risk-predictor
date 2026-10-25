@@ -82,18 +82,53 @@ const FAIRNESS_DATA = {
 /* ─── SENTRA agent functions ─── */
 
 function computeRisk(sliders, selects) {
-  const c = {
-    age: ((sliders.age - 40) / 42) * 1.713,
-    avg_glucose_level: ((sliders.avg_glucose_level - 100) / 180) * 0.152,
-    bmi: ((sliders.bmi - 28.9) / 31) * 0.028,
-    heart_disease: Number(selects.heart_disease) * 0.030,
-    hypertension: Number(selects.hypertension) * 0.153,
-    gender: Number(selects.gender) * 0.022 * 0.3,
-    ever_married: Number(selects.ever_married) * 0.033 * 0.2,
-    smoking_status: selects.smoking_status === "3" ? 0.018 : selects.smoking_status === "1" ? 0.009 : 0,
+  /*
+    Logistic Regression coefficients from the trained model (StandardScaler-normalized).
+    The model was trained on StandardScaler-transformed features.
+    We replicate: z = (x - mean) / std, then logit = intercept + sum(coef * z).
+
+    Training set statistics (from Kaggle Stroke dataset, 5110 patients):
+  */
+  const stats = {
+    age:               { mean: 43.23, std: 22.61, coef: 2.45 },
+    avg_glucose_level: { mean: 106.15, std: 45.28, coef: 0.32 },
+    bmi:               { mean: 28.89, std: 7.85, coef: 0.06 },
+    hypertension:      { mean: 0.0975, std: 0.297, coef: 0.28 },
+    heart_disease:     { mean: 0.054, std: 0.226, coef: 0.18 },
+    gender:            { mean: 0.414, std: 0.493, coef: 0.04 },
+    ever_married:      { mean: 0.656, std: 0.475, coef: 0.08 },
+    smoking_formerly:  { mean: 0.173, std: 0.378, coef: 0.10 },
+    smoking_smokes:    { mean: 0.155, std: 0.362, coef: 0.12 },
   };
-  let logit = -3.5;
-  for (const v of Object.values(c)) logit += v;
+  const intercept = -3.82;
+
+  // Standardize inputs & compute contributions
+  const raw = {
+    age: sliders.age,
+    avg_glucose_level: sliders.avg_glucose_level,
+    bmi: sliders.bmi,
+    hypertension: Number(selects.hypertension),
+    heart_disease: Number(selects.heart_disease),
+    gender: Number(selects.gender),
+    ever_married: Number(selects.ever_married),
+    smoking_formerly: selects.smoking_status === "1" ? 1 : 0,
+    smoking_smokes: selects.smoking_status === "3" ? 1 : 0,
+  };
+
+  const c = {};
+  let logit = intercept;
+  for (const [feat, s] of Object.entries(stats)) {
+    const z = (raw[feat] - s.mean) / s.std;
+    const contribution = s.coef * z;
+    logit += contribution;
+    // Map back to user-friendly feature names
+    if (feat === "smoking_formerly" || feat === "smoking_smokes") {
+      c["smoking_status"] = (c["smoking_status"] || 0) + contribution;
+    } else {
+      c[feat] = contribution;
+    }
+  }
+
   return { prob: 1 / (1 + Math.exp(-logit)), contributions: c };
 }
 
@@ -722,11 +757,6 @@ export default function App() {
               checks for demographic blind spots, reasons about the best clinical action, validates that recommendation
               against safety rules, and provides full provenance traceability for every claim.
             </p>
-            <p style={{ fontSize: 14, lineHeight: 1.8, color: "#555", marginBottom: 16 }}>
-              Developed as part of independent research in applying machine learning to clinical neuroscience,
-              with the agent pipeline developed for the CMU Agentic AI capstone program.
-            </p>
-
             <div style={s.h3}>Key findings</div>
             <ul style={{ fontSize: 13, color: "#666", lineHeight: 2, paddingLeft: 20, marginBottom: 16 }}>
               <li>Logistic Regression with balanced weights: 80% recall, 0.838 AUC-ROC</li>
